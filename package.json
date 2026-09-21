@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "A small, durable WeCom-to-Pi RPC bridge",
-  "engines": { "node": ">=22.16.0 <23 || >=24" },
+  "engines": {
+    "node": ">=22.16.0 <23 || >=24"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -13,11 +15,17 @@
     "test:contract": "npm run build && node --test dist/tests/contract/*.test.js",
     "test:e2e": "npm run build && node --test dist/tests/e2e/*.test.js",
     "check": "npm run typecheck && npm test",
-    "bridge": "node --experimental-strip-types src/cli.ts",
-    "dev": "node --experimental-strip-types src/main.ts",
-    "smoke:wecom": "node --experimental-strip-types scripts/smoke-wecom.ts",
-    "smoke:pi": "node --experimental-strip-types scripts/smoke-pi.ts"
+    "bridge": "npm run build --silent && node dist/src/cli.js",
+    "dev": "npm run build --silent && node dist/src/main.js",
+    "smoke:wecom": "npm run build --silent && node dist/scripts/smoke-wecom.js",
+    "smoke:pi": "npm run build --silent && node dist/scripts/smoke-pi.js"
   },
-  "dependencies": { "@wecom/aibot-node-sdk": "1.0.6", "sharp": "0.34.1" },
-  "devDependencies": { "@types/node": "22.15.33", "typescript": "5.8.3" }
+  "dependencies": {
+    "sharp": "0.34.1",
+    "@wecom/aibot-node-sdk": "1.0.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.33",
+    "typescript": "5.8.3"
+  }
 }

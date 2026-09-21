@@ -1,0 +1,23 @@
+{
+  "name": "wecom-agent-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A small, durable WeCom-to-Pi RPC bridge",
+  "engines": { "node": ">=22.16.0 <23 || >=24" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "npm run build && node --test dist/tests/unit/*.test.js dist/tests/contract/*.test.js dist/tests/e2e/*.test.js",
+    "test:unit": "npm run build && node --test dist/tests/unit/*.test.js",
+    "test:contract": "npm run build && node --test dist/tests/contract/*.test.js",
+    "test:e2e": "npm run build && node --test dist/tests/e2e/*.test.js",
+    "check": "npm run typecheck && npm test",
+    "bridge": "node --experimental-strip-types src/cli.ts",
+    "dev": "node --experimental-strip-types src/main.ts",
+    "smoke:wecom": "node --experimental-strip-types scripts/smoke-wecom.ts",
+    "smoke:pi": "node --experimental-strip-types scripts/smoke-pi.ts"
+  },
+  "dependencies": { "@wecom/aibot-node-sdk": "1.0.6", "sharp": "0.34.1" },
+  "devDependencies": { "@types/node": "22.15.33", "typescript": "5.8.3" }
+}

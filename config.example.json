@@ -1,0 +1,41 @@
+{
+  "backend": "pi",
+  "workspace": { "id": "default", "path": "/absolute/path/to/smoke-repo" },
+  "stateRoot": "/absolute/path/to/private-bridge-state",
+  "wecom": {
+    "allowedUsers": ["REPLACE_WITH_REAL_USER_ID"],
+    "allowedGroups": [],
+    "enableGroups": false,
+    "mediaAllowedHosts": []
+  },
+  "queue": { "maxActive": 1, "maxPendingPerSession": 3, "maxPendingGlobal": 20 },
+  "media": {
+    "maxImages": 4,
+    "maxImageBytes": 10485760,
+    "maxTotalBytes": 20971520,
+    "maxPixels": 20000000,
+    "maxTotalPixels": 40000000,
+    "downloadTimeoutMs": 20000,
+    "retentionHours": 24
+  },
+  "agent": {
+    "command": "/absolute/path/to/pi",
+    "args": [],
+    "env": { "HOME": "/absolute/path/to/dedicated-agent-home" },
+    "sessionRoot": "/absolute/path/to/dedicated-agent-sessions",
+    "startupTimeoutMs": 30000,
+    "taskTimeoutMs": 900000,
+    "cancelGraceMs": 5000,
+    "killGraceMs": 2000,
+    "maxFrameBytes": 8388608,
+    "isolation": "unverified"
+  },
+  "reply": {
+    "chunkBytes": 3500,
+    "minIntervalMs": 1500,
+    "maxAutoParts": 3,
+    "maxResultBytes": 1048576,
+    "sendTimeoutMs": 15000
+  },
+  "ocr": { "mode": "off" }
+}

@@ -27,7 +27,7 @@ export interface Plan { selection: Selection; control?: string; command?:string;
 class DirectoryApprovalRequired extends BridgeError {
   constructor(readonly path:string) { super('DIRECTORY_UNAUTHORIZED'); }
 }
-const consent=/^(同意授权|确认授权|同意|确认|yes)[。！!]?$/iu;
+const consent=/^(同意授权|确认授权|同意|确认|yes|\/approve)[。！!]?$/iu;
 export class Router {
   readonly catalog: Catalog;
   private controller=new AbortController();
@@ -61,14 +61,14 @@ export class Router {
     const target=provisional.target(d);
     const pending={directory:d,digest:target.digest,version:this.catalog.version,at:Date.now(),taskId:''};
     state.authorization=pending;
-    const plan=this.control(i,state,`需要目录授权：\n${d.path}\n\n默认执行配置（原请求明确指定的模型设置优先）：\n${executionLabel(target.config)}\n\n待处理请求：${i.text.slice(0,1000)}\n\n是否授权此对话使用上述目录并继续处理这条请求？工作任务将新建会话。授权仅针对这个目录，不扩大其他目录权限。\n请在下一条消息明确回复“同意授权”或“拒绝授权”（15 分钟内有效）。确认前不会读取目录内容或执行任务。`);
+    const plan=this.control(i,state,`需要目录授权：\n${d.path}\n\n默认执行配置（原请求明确指定的模型设置优先）：\n${executionLabel(target.config)}\n\n待处理请求：${i.text.slice(0,1000)}\n\n是否授权此对话使用上述目录并继续处理这条请求？工作任务将新建会话。授权仅针对这个目录，不扩大其他目录权限。\n请在下一条消息回复 /approve 或“同意授权”，拒绝请回复“拒绝授权”（15 分钟内有效）。确认前不会读取目录内容或执行任务。`);
     const commit=plan.commit;plan.commit=()=>{pending.taskId=this.store.duplicate(i)!.task_id;commit();};return plan;
   }
   private async confirmAuthorization(i:Incoming,state:State):Promise<Plan> {
     const pending=state.authorization!;delete state.authorization;
     if(!consent.test(i.text.trim()) || i.media.length) {
       const plan=this.control(i,state,'未授权，也未执行原请求。如需继续，请重新提出目录请求，再回复明确授权。');
-      if(/^\/(cancel|status|help)(\s|$)/.test(i.text))return {...plan,control:undefined,command:i.text};
+      if(/^\/(cancel|status|help|update|restart)(\s|$)/.test(i.text))return {...plan,control:undefined,command:i.text};
       return plan;
     }
     if(Date.now()-pending.at>900000 || pending.version!==this.catalog.version)return this.control(i,state,'目录授权请求已过期或配置已变化，未授权、未执行；请重新提出请求。');
@@ -196,7 +196,7 @@ export class Router {
   async plan(i: Incoming): Promise<Plan> {
     const router=this.scoped(i),state=router.state(i);
     if(state.authorization)return router.confirmAuthorization(i,state);
-    if(/^(同意授权|确认授权)[。！!]?$/u.test(i.text.trim()))return router.control(i,state,'当前没有待确认的目录授权请求，未执行任务。');
+    if(/^(同意授权|确认授权|\/approve)[。！!]?$/u.test(i.text.trim()))return router.control(i,state,'当前没有待确认的目录授权请求，未执行任务。');
     try {return await router.planScoped(i);}catch(e) {
       if(e instanceof DirectoryApprovalRequired)return router.askAuthorization(i,state,e.path);throw e;
     }

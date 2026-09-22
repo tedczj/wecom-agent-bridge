@@ -1,0 +1,16 @@
+Management commands verification - 2026-09-23
+npm ci --no-audit --no-fund: exit 0; lockfile install, no audit or dependency upgrade
+npm run check: exit 0; 211 tests, 0 failed/cancelled/skipped
+AUTH12: directory /approve alias, separate confirmation identity, no arbitrary arguments
+MG01-MG08: 10 offline cases, real local processes/Git with npm doubles
+W15: paired Weixin approval, context, deduplication and result delivery via protocol doubles
+Initial startup regressions: stopped-parent zombie handling, parent-lock exit race, backend-switch identity checks
+Final startup regression cases passed after fixes; first-time login stdin and 300-second login window retained
+npm run smoke:maintenance -- --live: exit 0
+- isolated source copy and local bare Git remote on dev
+- actual fast-forward, npm ci and complete npm run check
+- actual worker replacement and final local receipt
+- no Agent/model calls, no Weixin messages, no production update triggered
+Without --live: exit 1, LIVE_OPT_IN_REQUIRED
+Deployment: idle/preflight checks; stable manager and initialized worker started
+Phone-side management flow, Linux runtime and OS isolation not verified locally

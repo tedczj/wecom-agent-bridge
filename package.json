@@ -20,7 +20,8 @@
     "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi",
     "smoke:routing": "npm run build --silent && node dist/scripts/smoke-routing.js",
     "smoke:planner": "npm run build --silent && node dist/scripts/smoke-planner.js",
-    "smoke:authorization": "npm run build --silent && node dist/scripts/smoke-authorization.js"
+    "smoke:authorization": "npm run build --silent && node dist/scripts/smoke-authorization.js",
+    "smoke:maintenance": "npm run build --silent && node dist/scripts/smoke-maintenance.js"
   },
   "dependencies": {
     "qrcode-terminal": "0.12.0",

@@ -4,18 +4,29 @@
 
 ## 本轮组合路由实现
 
-自然语言请求现在可组合目录、执行 backend/model/reasoning、新会话和材料交接；路由可请求有界只读查询，宿主验证并执行。未登记的项目继承授权根的 profile，模型组合不需单独建 profile。原 58 个验收 ID 与 BR-01..BR-22 均保留，新增 PL01..PL14、AUTH01..AUTH11 及两项 Pi 参数契约测试，映射见 [TEST_MATRIX.md](TEST_MATRIX.md)。
+自然语言请求现在可组合目录、执行 backend/model/reasoning、新会话和材料交接；路由可请求有界只读查询，宿主验证并执行。未登记的项目继承授权根的 profile，模型组合不需单独建 profile。原 58 个验收 ID 与 BR-01..BR-22 均保留，新增 PL01..PL14、AUTH01..AUTH12、MG01..MG08、W15 及两项 Pi 参数契约测试，映射见 [TEST_MATRIX.md](TEST_MATRIX.md)。
 
 | 检查 | 本轮结果 |
 |---|---|
 | `npm ci --no-audit --no-fund` | exit 0，按 lockfile 安装；本次未运行 audit，未升级依赖 |
-| `npm run check` | exit 0；类型检查、构建、199 tests；0 failed / cancelled / skipped |
+| `npm run check` | exit 0；类型检查、构建、211 tests；0 failed / cancelled / skipped |
 | `git diff --check` | exit 0 |
 | `smoke:planner --live` | exit 0；真实规划、两次本地只读工作任务、合成图片交接和原生 turn metadata 校验通过 |
 | 默认启动配置查找 | HOME / XDG 两项隔离启动测试通过，兼容 macOS `sh start.sh` |
 | 微信端新版消息收发 | 现场已记录用户明确授权后的一次任务；兜底修复后服务已重启、有效配置已核对，手机端新任务展示尚未复测 |
 
 [此前组合路由结果摘要](evidence/planner-verification.txt)和[本次交互授权摘要](evidence/authorization-verification.txt)是已执行命令的结果摘录，不是完整控制台日志。[源码 SHA-256 清单](source-manifest.sha256)绑定当前源码/测试输入。
+
+## 微信管理命令（2026-09-23）
+
+实现 `/approve`（目录与服务管理确认）、`/update`、`/restart`；未接入 Codex 任意 shell 审批。`start` 使用稳定管理进程与桥接子进程，确认后排空已有工作，结果写回同一对话 outbox。目录、配对、去重、FIFO、未知送达和中断阻塞规则保留。
+
+- 完整 `npm run check` exit 0：211 tests，0 failed/cancelled/skipped。AUTH12、MG01–MG08、W15 的新增覆盖见 TEST_MATRIX.md。MG 使用真实本地桥接进程和临时 Git 仓库，但 npm 为离线 double；W15 为 iLink 协议 double，均不是手机端实测。
+- `npm run smoke:maintenance -- --live` exit 0：临时源码副本、本地 Git origin/dev，真实快进、真实 npm ci 与完整 npm run check、桥接进程替换和本地最终回执通过。没有调用模型或发送微信消息。无 `--live` 时 exit 1 / LIVE_OPT_IN_REQUIRED。
+- 回归先发现暂停管理进程后的僵尸子进程误判、正常退出移除锁时的竞态，以及既有后端切换身份检查不适配父子进程；修复后原启动/强制退出/旧锁/后端切换测试通过。测试的“就绪”改为核验子进程初始化回执；保留首次微信登录的五分钟扫码窗口和验证码 stdin。
+- 本机空闲预检后已部署管理进程入口。微信端 `/update` / `/restart` 的下一条确认与最终投递尚未现场验收；测试没有替用户发起生产管理命令。
+
+[管理流程验证摘要](evidence/maintenance-verification.txt)为受限结果摘录。更新失败恢复的是生成的运行产物，不撤销 Git 源码快进；异常终止不自动重新执行管理操作。当前管理进程在工作子进程更新时保持稳定，完整外部停止/启动才加载新的管理进程实现。
 
 ## 目录查询缺参修复（2026-09-23）
 

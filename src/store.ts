@@ -6,6 +6,7 @@ import type { Incoming, Job, JobStatus, Session, SessionRef, NormalizedInput, Im
 import { invariant } from './errors.ts';
 import { baseKey } from './local.ts';
 import { boundedResult, resultParts } from './reply.ts';
+import { maintenanceActive, type Maintenance } from './maintenance.ts';
 const schema = `
 CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (
@@ -128,6 +129,7 @@ export class Store {
         else if (kind === 'agent') this.put('explicit:' + base,null);
       }
       if (kind === 'agent') {
+        invariant(!maintenanceActive(this.value<Maintenance>('maintenance')),'MAINTENANCE_DRAINING');
         invariant(!this.blocked(), 'WORKSPACE_BLOCKED'); invariant(session.state !== 'tainted', 'SESSION_TAINTED');
         const n = this.db.prepare("SELECT count(*) n FROM jobs WHERE kind='agent' AND status IN ('preparing','queued')").get() as {n: number};
         const own = this.db.prepare("SELECT count(*) n FROM jobs WHERE session_key=? AND kind='agent' AND status IN ('preparing','queued')").get(session.session_key) as {n: number};
@@ -149,6 +151,11 @@ export class Store {
         this.db.prepare("INSERT OR IGNORE INTO outbox(delivery_id,task_id,purpose,part_no,target_json,body_json,state,created_at) VALUES (?,?,'start',?,?,?,'pending',?)").run(randomUUID(),taskId,n+1,job.route_json,JSON.stringify({text:piece}),Date.now());
     });
   }
+  maintenanceAck(taskId:string,text:string):void {
+    const job=this.get(taskId);invariant(job.kind==='command' && job.status==='queued','MAINTENANCE_JOB');
+    for(const [n,piece] of resultParts(taskId,text,this.c.reply.chunkBytes).entries())
+      this.db.prepare("INSERT INTO outbox(delivery_id,task_id,purpose,part_no,target_json,body_json,state,created_at) VALUES (?,?,'control',?,?,?,'pending',?)").run(randomUUID(),taskId,n+1,job.route_json,JSON.stringify({text:piece}),Date.now());
+  }
   claim(): Job | undefined {
     return this.atomic(() => {
       if (this.blocked() || this.db.prepare("SELECT 1 FROM jobs WHERE status IN ('running','cancel_requested') LIMIT 1").get()) return;
@@ -163,7 +170,7 @@ export class Store {
     invariant(owner.backend === ref.kind, 'SESSION_BACKEND_MISMATCH');
     this.db.prepare("UPDATE sessions SET agent_ref_json=?,state='ready',updated_at=? WHERE session_key=?").run(JSON.stringify(ref), Date.now(), key);
   }
-  complete(taskId: string, status: JobStatus, text: string, code?: string, expected: JobStatus[] = ['running','cancel_requested','preparing','queued'], directParts?: string[]): boolean {
+  complete(taskId: string, status: JobStatus, text: string, code?: string, expected: JobStatus[] = ['running','cancel_requested','preparing','queued'], directParts?: string[], purpose?:string): boolean {
     invariant(['succeeded','failed','cancelled','timed_out','interrupted'].includes(status), 'INVALID_TERMINAL');
     return this.atomic(() => {
       const job = this.get(taskId); if (!expected.includes(job.status)) return false;
@@ -175,14 +182,14 @@ export class Store {
       if (directParts) invariant(job.kind === 'command' && directParts.every(p => Buffer.byteLength(p) <= this.c.reply.chunkBytes), 'REPLY_TOO_LARGE');
       const pieces = directParts ?? resultParts(taskId, bounded.text, this.c.reply.chunkBytes);
       for (const [i, piece] of pieces.slice(0, this.c.reply.maxAutoParts).entries())
-        this.db.prepare("INSERT INTO outbox(delivery_id,task_id,purpose,part_no,target_json,body_json,state,created_at) VALUES (?,?,?,?,?,?,'pending',?)").run(randomUUID(), taskId, job.kind === 'command' ? 'control' : 'final', i + 1, job.route_json, JSON.stringify({ text: piece }), Date.now());
+        this.db.prepare("INSERT INTO outbox(delivery_id,task_id,purpose,part_no,target_json,body_json,state,created_at) VALUES (?,?,?,?,?,?,'pending',?)").run(randomUUID(), taskId, purpose ?? (job.kind === 'command' ? 'control' : 'final'), i + 1, job.route_json, JSON.stringify({ text: piece }), Date.now());
       return true;
     });
   }
-  owned(owner: Job, prefix: string): Job {
+  owned(owner: Job, prefix: string, includeCommands=false): Job {
     invariant(/^(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f-]{27})$/.test(prefix), 'TASK_ID_INVALID');
     const routed=!!JSON.parse(owner.input_json).routing;
-    const jobs = this.db.prepare(`SELECT j.* FROM jobs j JOIN sessions s ON s.session_key=j.session_key WHERE ${routed?'j.route_json':'s.base_key'}=? AND j.task_id LIKE ? AND j.kind='agent' LIMIT 2`).all(routed?owner.route_json:this.session(owner.session_key).base_key, prefix + '%') as unknown as Job[];
+    const jobs = this.db.prepare(`SELECT j.* FROM jobs j JOIN sessions s ON s.session_key=j.session_key WHERE ${routed?'j.route_json':'s.base_key'}=? AND j.task_id LIKE ? ${includeCommands?'':"AND j.kind='agent'"} LIMIT 2`).all(routed?owner.route_json:this.session(owner.session_key).base_key, prefix + '%') as unknown as Job[];
     invariant(jobs.length === 1, 'TASK_NOT_FOUND'); return jobs[0]!;
   }
   cancel(taskId: string): JobStatus {
@@ -203,12 +210,14 @@ export class Store {
     return this.createSession(old.base_key, route.senderId, (this.latest(old.base_key)?.generation ?? 0) + 1).generation;
   }
   blocked(): boolean { return !!this.db.prepare("SELECT 1 FROM jobs WHERE status='interrupted' AND reviewed_at IS NULL LIMIT 1").get(); }
-  recover(): void {
+  recover(maintenanceTaskId?:string): void {
     this.atomic(() => {
       for (const row of this.db.prepare("SELECT * FROM jobs WHERE status IN ('preparing','running','cancel_requested') OR (kind='command' AND status='queued')").all() as unknown as Job[]) {
+        if(row.task_id===maintenanceTaskId && row.kind==='command' && row.status==='queued')continue;
         const interrupted = ['running','cancel_requested'].includes(row.status);
-        this.complete(row.task_id, interrupted ? 'interrupted' : 'failed', interrupted ? '执行被中断，可能已修改代码；请在本地检查进程和 git diff 后恢复。' : '输入准备或控制命令被中断，请重新提交。', interrupted ? 'EXECUTION_INTERRUPTED' : 'MEDIA_PREPARATION_INTERRUPTED');
+        this.complete(row.task_id, interrupted ? 'interrupted' : 'failed', interrupted ? '执行被中断，可能已修改代码；请在本地检查进程和 git diff 后恢复。' : '输入准备或控制命令被中断，请重新提交。', interrupted ? 'EXECUTION_INTERRUPTED' : 'MEDIA_PREPARATION_INTERRUPTED',undefined,undefined,this.value<Maintenance>('maintenance')?.taskId===row.task_id?'maintenance-final':undefined);
       }
+      const m=this.value<Maintenance>('maintenance');if(maintenanceActive(m) && m!.taskId!==maintenanceTaskId)this.put('maintenance',{...m,phase:'failed',code:'MAINTENANCE_INTERRUPTED'});
       this.db.prepare("UPDATE outbox SET state='unknown',last_error_code='DELIVERY_INTERRUPTED' WHERE state='sending'").run();
     });
   }
@@ -218,7 +227,9 @@ export class Store {
     const where = owner ? ' WHERE s.base_key=?' : '', args = owner ? [this.session(owner.session_key).base_key] : [];
     const jobs = this.db.prepare(`SELECT j.task_id,j.status,j.error_code FROM jobs j JOIN sessions s ON s.session_key=j.session_key${where} ORDER BY j.seq DESC LIMIT 12`).all(...args);
     const deliveries = this.db.prepare(`SELECT o.task_id,o.state,o.last_error_code FROM outbox o JOIN jobs j ON j.task_id=o.task_id JOIN sessions s ON s.session_key=j.session_key${where}${where ? ' AND' : ' WHERE'} o.state IN ('unknown','failed') LIMIT 12`).all(...args);
-    return { blocked: this.blocked(), jobs, deliveries };
+    const m=this.value<Maintenance>('maintenance');
+    const maintenance=m && (!owner || m.route===owner.route_json)?{action:m.action,phase:m.phase,taskId:m.taskId,code:m.code,oldHead:m.oldHead,newHead:m.newHead}:undefined;
+    return { blocked: this.blocked(), jobs, deliveries,...(maintenance?{maintenance}:{}) };
   }
   claimDelivery(now: number): Delivery | undefined {
     return this.atomic(() => {

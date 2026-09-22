@@ -8,6 +8,7 @@ import { BackendStateUnknown, errorCode, invariant, log } from './errors.ts';
 import { resultParts } from './reply.ts';
 import { deadline } from './async.ts';
 import { executionLabel } from './routing/execution.ts';
+import { approveMaintenance,proposeMaintenance,maintenanceActive,supervised,type Maintenance } from './maintenance.ts';
 export class Bridge {
   private stopped = true;
   private intake: Promise<unknown> = Promise.resolve();
@@ -18,7 +19,11 @@ export class Bridge {
   private active?: {id: string; controller: AbortController};
   private preparing = new Map<string, {controller: AbortController; promise: Promise<void>}>();
   constructor(private c: Config, private channelId: string, readonly store: Store, private channel: Channel, private backend: AgentBackend, private media: MediaProvider, private normalizer: typeof normalize = normalize, private backendFactory?: (c: Config) => AgentBackend) { if (c.routing) this.router = new Router(c,store); }
-  start(): void { this.store.recover(); this.stopped = false; this.kick(); }
+  start(): void {
+    const m=this.store.value<Maintenance>('maintenance');
+    this.store.recover(supervised(this.c) && m?.supervisorToken===process.env.BRIDGE_SUPERVISOR_TOKEN && maintenanceActive(m)?m!.taskId:undefined);
+    this.stopped = false; this.kick();
+  }
   accept(frame: unknown): Promise<{taskId?: string; duplicate?: boolean; rejected?: string}> {
     const run = this.intake.then(() => this.acceptOrdered(frame));
     this.intake = run.catch(() => {}); return run;
@@ -29,20 +34,27 @@ export class Bridge {
     try { incoming = this.normalizer(frame, this.c, this.channelId); }
     catch (e) { const code = errorCode(e, 'INVALID_MESSAGE'); log('input.rejected', { code }); return { rejected: code }; }
     let control = incoming.text.startsWith('/');
-    let reserved, plan: Plan | undefined, routingError: string | undefined;
+    let reserved, plan: Plan | undefined, routingError: string | undefined,managementReply:string|undefined;
     try {
       const duplicate=this.store.duplicate(incoming); if(duplicate)return {taskId:duplicate.task_id,duplicate:true};
-      if(this.router) {
-        try { plan=await this.router.plan(incoming); control=control || plan.control !== undefined || plan.command !== undefined; }
+      const maintenance=this.store.value<Maintenance>('maintenance');
+      const managementApproval=incoming.text.trim()==='/approve' && maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route);
+      if(maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route) && !managementApproval && !/^\/(help|status|cancel|result|update|restart)(\s|$)/.test(incoming.text)) {managementReply='已取消待确认的服务管理操作，未执行。如需更新或重启，请重新发送命令。';control=true;}
+      if(maintenanceActive(maintenance) && !/^\/(help|status|cancel|result|update|restart)(\s|$)/.test(incoming.text)) {routingError='MAINTENANCE_DRAINING';control=true;}
+      if(this.router && !managementApproval && !routingError && !managementReply) {
+        try { plan=await this.router.plan(incoming); control=plan.control !== undefined || plan.command !== undefined || control && !plan.selection.authorizedRequestTaskId; }
         catch(e) { routingError=errorCode(e,'ROUTING_UNAVAILABLE');control=true; }
         if (control && incoming.media.length && !plan?.authorizationReply) { routingError='COMMAND_IMAGES'; plan=undefined; }
       }
+      if(control && incoming.media.length && !plan?.authorizationReply) {routingError='COMMAND_IMAGES';plan=undefined;}
       if(this.stopped)return {rejected:'STOPPING'};
       reserved=this.store.atomic(()=>{
         const result=this.store.reserve(incoming,control?'command':'agent',plan?.selection);
         if(!result.duplicate) {
+          if(maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route) && (!managementApproval || incoming.media.length))this.store.put('maintenance',{...maintenance,phase:'failed',code:'APPROVAL_CANCELLED'});
           if(!routingError)plan?.commit();
-          if(routingError || plan?.control !== undefined) this.store.complete(result.job.task_id,routingError?'failed':'succeeded',routingError?`路由未执行（${routingError}），原目录保持，请补充目录或检查配置。`:plan!.control!,routingError);
+          if(managementReply && !routingError)this.store.complete(result.job.task_id,'succeeded',managementReply);
+          if(routingError || plan?.control !== undefined) this.store.complete(result.job.task_id,routingError?'failed':'succeeded',routingError?(routingError==='MAINTENANCE_DRAINING'?'服务正在等待更新或重启，未接收新工作；可用 /status 查看。':`路由未执行（${routingError}），原目录保持，请补充目录或检查配置。`):plan!.control!,routingError);
         }
         return result;
       });
@@ -51,10 +63,13 @@ export class Bridge {
     const { job, duplicate } = reserved;
     if (duplicate) return { taskId: job.task_id, duplicate: true };
     if (control) {
-      if (routingError || plan?.control !== undefined) { this.kick(); return {taskId:job.task_id,duplicate:false}; }
+      if (routingError || managementReply || plan?.control !== undefined) { this.kick(); return {taskId:job.task_id,duplicate:false}; }
       this.store.atomic(() => {
-        try { const answer = this.command(job, plan?.command ?? incoming.text); this.store.complete(job.task_id, 'succeeded', answer.text, undefined, ['queued'], answer.parts); }
-        catch (e) { this.store.complete(job.task_id, 'failed', `命令未执行（${errorCode(e)}）。`, errorCode(e)); }
+        try { const answer = this.command(job, plan?.command ?? incoming.text); if(answer.pending)this.store.maintenanceAck(job.task_id,answer.text);else this.store.complete(job.task_id, 'succeeded', answer.text, undefined, ['queued'], answer.parts); }
+        catch (e) {
+          const m=this.store.value<Maintenance>('maintenance');if(incoming.text.trim()==='/approve' && m?.phase==='approval' && m.route===job.route_json)this.store.put('maintenance',{...m,phase:'failed',code:errorCode(e)});
+          this.store.complete(job.task_id, 'failed', `命令未执行（${errorCode(e)}）。`, errorCode(e));
+        }
       });
       if (this.active && this.store.get(this.active.id).status === 'cancel_requested') this.active.controller.abort();
       for (const [id, p] of this.preparing) if (this.store.get(id).status === 'cancelled') p.controller.abort();
@@ -85,9 +100,11 @@ export class Bridge {
   private receipt(reqId: string, text: string): void {
     void deadline(this.channel.receipt(reqId, text), this.c.reply.sendTimeoutMs, 'RECEIPT_TIMEOUT').catch(() => log('receipt.failed', { code: 'RECEIPT_UNKNOWN' }));
   }
-  private command(owner: Job, text: string): {text: string; parts?: string[]} {
+  private command(owner: Job, text: string): {text: string; parts?: string[]; pending?:boolean} {
     const [cmd, ...args] = text.trim().split(/\s+/);
-    if (cmd === '/help') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `工作目录别名：${JSON.parse(owner.input_json).workspaceId}\n/help /status /new\n/cancel [taskId]\n/result taskId [part]${this.router?'\n/route 目录 /sessions [目录] /find 关键词 /read 序号 /resume 序号 /alias 简称 /more':''}\n取消和失败都可能已有部分修改。`}; }
+    if(cmd==='/update' || cmd==='/restart') {invariant(!args.length,'COMMAND_ARGUMENTS');return {text:proposeMaintenance(this.c,this.store,owner,cmd.slice(1) as 'update'|'restart')};}
+    if(cmd==='/approve') {invariant(!args.length,'COMMAND_ARGUMENTS');return {text:approveMaintenance(this.c,this.store,owner),pending:true};}
+    if (cmd === '/help') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `工作目录别名：${JSON.parse(owner.input_json).workspaceId}\n/help /status /new\n/cancel [taskId]\n/result taskId [part]\n/approve /update /restart${this.router?'\n/route 目录 /sessions [目录] /find 关键词 /read 序号 /resume 序号 /alias 简称 /more':''}\n/approve 仅确认目录或服务管理操作，不提升 Agent 沙箱权限。取消和失败都可能已有部分修改。`}; }
     if (cmd === '/status') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: JSON.stringify(this.store.summary(owner), null, 2)}; }
     if (cmd === '/new') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `已创建新会话 generation=${this.store.newGeneration(owner)}；历史结果保留。`}; }
     if (cmd === '/cancel') {
@@ -98,7 +115,7 @@ export class Bridge {
     }
     if (cmd === '/result') {
       invariant(args.length >= 1 && args.length <= 2 && (args[1] === undefined || /^[1-9]\d{0,5}$/.test(args[1])), 'COMMAND_ARGUMENTS');
-      const target = this.store.owned(owner, args[0]!); invariant(target.result_text !== null, 'RESULT_NOT_READY');
+      const target = this.store.owned(owner, args[0]!,true); invariant(target.result_text !== null, 'RESULT_NOT_READY');
       const answer = resultParts(target.task_id, target.result_text, this.c.reply.chunkBytes)[Number(args[1] ?? 1) - 1];
       invariant(answer, 'RESULT_PART_INVALID'); return {text: answer, parts: [answer]};
     }

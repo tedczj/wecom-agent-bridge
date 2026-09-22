@@ -64,7 +64,7 @@ else {
     }
     emit({type:'turn.completed',usage:{input_tokens:1,cached_input_tokens:0,output_tokens:1}});
     if (mode === 'exit-error') process.exitCode = 7;
-    if (mode === 'late-exit') setTimeout(() => {}, 150);
+    if (mode === 'late-exit') setTimeout(() => {}, Number(process.env.FAKE_EXIT_DELAY_MS ?? 150));
     if (mode === 'duplicate-terminal') emit({type:'turn.completed',usage:{}});
   }
 }

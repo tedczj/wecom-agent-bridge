@@ -136,3 +136,12 @@ test('AUTH11: missing default-root profile never inherits the current workspace 
   assert.equal(question.status,'failed');assert.equal(question.error_code,'DIRECTORY_NO_PROFILE');
   assert.equal(h.router.state(h.incoming()).authorization,undefined);assert.equal(h.backend.calls.length,0);
 });
+
+test('AUTH12: /approve executes the pending directory request with its own identity, never arbitrary arguments',async t=>{
+  const h=harness(t),question=await h.submit('检查库存');h.delivered(question.task_id);
+  const result=await h.submit('/approve');assert.equal(result.kind,'agent');assert.equal(result.status,'succeeded');
+  assert.equal(h.backend.calls[0]!.originalText,'/approve');assert.equal(h.backend.calls[0]!.text,'检查库存');
+  await h.submit('/approve');assert.equal(h.backend.calls.length,1);
+  const next=await h.submit('/route '+path.join(h.directory,'..'));assert.equal(next.status,'failed');
+  await h.submit('/approve rm -rf anything');assert.equal(h.backend.calls.length,1);
+});

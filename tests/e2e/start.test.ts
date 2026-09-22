@@ -35,11 +35,11 @@ test('start.sh: restarts its live instance, recovers a stale lock and preserves 
     const exit = once(child, 'exit'); let stdout = '', stderr = '';
     child.stdout.on('data', b => { stdout += b; });
     child.stderr.on('data', b => { stderr += b; });
-    h.cleanups.push(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await exit; } });
+    h.cleanups.push(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGCONT');child.kill('SIGTERM'); await exit; } });
     return {child, exit, stdout:()=>stdout, stderr:()=>stderr};
   };
   const ready = (pid: number) => eventually(() => {
-    try { return JSON.parse(readFileSync(lock, 'utf8')).pid === pid; } catch { return false; }
+    try { return JSON.parse(readFileSync(path.join(h.c.stateRoot,'supervisor','worker.json'),'utf8')).pid===JSON.parse(readFileSync(lock,'utf8')).pid && JSON.parse(readFileSync(path.join(h.c.stateRoot,'supervisor','instance.lock'), 'utf8')).pid === pid; } catch { return false; }
   }, 25000);
   const first = launch(); await ready(first.child.pid!);
   const second = launch(); await ready(second.child.pid!);
@@ -50,8 +50,11 @@ test('start.sh: restarts its live instance, recovers a stale lock and preserves 
   const forced = launch(); await ready(forced.child.pid!);
   const [, signal] = await second.exit;
   assert.equal(signal, 'SIGKILL'); assert.match(forced.stderr(), /sending SIGKILL/);
+  const workerPid=JSON.parse(readFileSync(lock,'utf8')).pid;
   forced.child.kill('SIGKILL'); await forced.exit;
-  assert(existsSync(lock));
+  // Losing the supervisor closes IPC and the worker exits. Simulate a stale legacy lock after that exit.
+  await eventually(()=>{try{process.kill(workerPid,0);return false;}catch{return true;}},10000);
+  writeFileSync(lock,JSON.stringify({pid:workerPid,token:'stale-worker'}));
   const third = launch(); await ready(third.child.pid!);
   third.child.stdin.end(JSON.stringify({id:'launcher-help',session:'demo',text:'/help',images:[]})+'\n');
   const [code] = await third.exit;
@@ -87,16 +90,16 @@ test('start.sh: explicit backend switch preserves shared state and stops only th
     const child = spawn(launcher, ['--backend',backend,config], {cwd:h.root,stdio:'pipe'});
     const exit = once(child,'exit'); let stderr = '';
     child.stdout.resume(); child.stderr.on('data', b => { stderr += b; });
-    h.cleanups.push(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGTERM'); await exit; } });
+    h.cleanups.push(async () => { if (child.exitCode === null && child.signalCode === null) { child.kill('SIGCONT');child.kill('SIGTERM'); await exit; } });
     return {child,exit,stderr:()=>stderr};
   };
   const ready = (pid: number) => eventually(() => {
-    try { return JSON.parse(readFileSync(lock,'utf8')).pid === pid; } catch { return false; }
+    try { return JSON.parse(readFileSync(path.join(h.c.stateRoot,'supervisor','worker.json'),'utf8')).pid===JSON.parse(readFileSync(lock,'utf8')).pid && JSON.parse(readFileSync(path.join(h.c.stateRoot,'supervisor','instance.lock'),'utf8')).pid === pid; } catch { return false; }
   },25000);
   const first = launch('codex',codexConfig); await ready(first.child.pid!);
   const mismatch = launch('pi',codexConfig);
   assert.equal((await mismatch.exit)[0],1); assert.match(mismatch.stderr(),/START_BACKEND_MISMATCH/);
-  assert.equal(JSON.parse(readFileSync(lock,'utf8')).pid,first.child.pid);
+  assert.equal(JSON.parse(readFileSync(path.join(h.c.stateRoot,'supervisor','instance.lock'),'utf8')).pid,first.child.pid);
   const second = launch('pi',piConfig); await ready(second.child.pid!); await first.exit;
   assert.match(second.stderr(),/Stopping bridge PID/);
   const third = launch('codex',codexConfig); await ready(third.child.pid!); await second.exit;

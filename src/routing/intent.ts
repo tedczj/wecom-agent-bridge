@@ -12,7 +12,7 @@ export interface Intent {
 export function deterministic(text: string): Intent | undefined {
   const s = text.trim(); let m: RegExpMatchArray | null;
   if (/^(先停一下|停一下|取消当前任务|停止当前任务)[。！!]?$/u.test(s)) return {action:'cancel'};
-  if (/^\/(help|status|cancel|result)(\s|$)/.test(s)) return {action:'work'};
+  if (/^\/(help|status|cancel|result|update|restart)(\s|$)/.test(s)) return {action:'work'};
   if ((m=s.match(/^\/(route|new|sessions|find|read|resume|alias)(?:\s+([\s\S]+))?$/))) {
     const arg=m[2]?.trim();
     return m[1] === 'route' ? {action:'switch',query:arg} : m[1] === 'new' ? {action:'new',query:arg}

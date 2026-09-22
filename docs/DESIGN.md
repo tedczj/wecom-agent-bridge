@@ -118,3 +118,7 @@ Diagnostic logs contain bounded error codes, numeric API return codes and task s
 3. Opt-in real installed Codex/Pi text, session resume, image meaning, code modification and cancellation tests.
 
 These are separate levels. Passing (1) does not imply (2) or (3). Actual observed results, environment/network limitations and remote push status belong in `verification.md` rather than being inferred from implemented code.
+
+## Host management commands
+
+The verified paired user (or trusted local operator) may propose `/update` or `/restart`, then confirm with `/approve` in the same conversation. These are fixed host operations, not Agent shell tools or sandbox escalation. A stable parent supervises `cli start`, drains admitted work, retains a durable operation record and replaces the bridge child. The child reports readiness through an inherited IPC pipe; no network listener is added. Result delivery remains in the existing outbox and unknown delivery remains unknown. Runtime artifacts have a private backup during update; source state is not reset and interrupted operations never auto-rerun. Directory approval remains scoped and accepts `/approve` as an alias for explicit consent.

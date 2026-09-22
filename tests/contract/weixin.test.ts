@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createCipheriv, createHash } from 'node:crypto';
-import { existsSync, readFileSync, statSync, symlinkSync } from 'node:fs';
+import { existsSync, readFileSync, statSync, symlinkSync,mkdirSync,writeFileSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 import { setup, output, eventually } from '../helpers.ts';
@@ -12,6 +12,7 @@ import { normalizeWeixin, runWeixin, WeixinChannel, WeixinReceiver } from '../..
 import { openService } from '../../src/main.ts';
 import { OutboxPump } from '../../src/reply.ts';
 import type { Incoming } from '../../src/types.ts';
+import type { Maintenance } from '../../src/maintenance.ts';
 
 const auth: WeixinAuth = {token:'SYNTHETIC_BOT_TOKEN',botId:'bot@test',userId:'owner@test',baseUrl:'https://ilinkai.weixin.qq.com'};
 const frame = (id='1', text='hello') => ({message_id:id,from_user_id:auth.userId,to_user_id:auth.botId,
@@ -191,4 +192,24 @@ test('W14: omitted success codes support complete intake, Agent execution, reply
   assert.equal(sends,1);assert.equal(h.service.store.db.prepare('SELECT status FROM jobs').get()!.status,'succeeded');
   assert.equal(h.service.store.db.prepare('SELECT state FROM outbox').get()!.state,'sent');
   assert.equal(h.service.store.db.prepare("SELECT value FROM metadata WHERE key='weixin:cursor'").get()!.value,'accepted-cursor');
+});
+
+test('W15: paired Weixin management approval and final delivery are durable and deduplicated (protocol doubles)',async t=>{
+  const sends:any[]=[];
+  const h=await channelService(t,new WeixinApi(async(_url,init)=>{sends.push(JSON.parse(init!.body as string).msg);return response({});}));
+  // Synthetic manager identity only; real parent/worker replacement is exercised by MG01-MG08.
+  const prior=process.env.BRIDGE_SUPERVISOR_TOKEN;process.env.BRIDGE_SUPERVISOR_TOKEN='synthetic-manager';
+  t.after(()=>{if(prior===undefined)delete process.env.BRIDGE_SUPERVISOR_TOKEN;else process.env.BRIDGE_SUPERVISOR_TOKEN=prior;});
+  const root=path.join(h.c.stateRoot,'supervisor');mkdirSync(root);writeFileSync(path.join(root,'instance.lock'),JSON.stringify({pid:process.ppid,token:'synthetic-manager',root:h.workspace}));
+  const signal=new AbortController().signal;
+  await h.receiver.accept(frame('management-request','/restart'),signal);await h.service.settle();
+  assert.match(sends[0].item_list[0].text_item.text,/\/approve/);
+  await h.receiver.accept({...frame('foreign-approve','/approve'),from_user_id:'stranger'},signal);await h.service.settle();assert.equal(sends.length,1);
+  const approval={...frame('management-approval','/approve'),context_token:'FRESH_SYNTHETIC_CONTEXT'};
+  await h.receiver.accept(approval,signal);await h.service.settle();const m=h.service.store.value<Maintenance>('maintenance')!;
+  assert.equal(m.phase,'requested');assert.equal(h.service.store.get(m.taskId).status,'queued');assert.equal(sends.at(-1).context_token,'FRESH_SYNTHETIC_CONTEXT');
+  await h.receiver.accept(approval,signal);await h.service.settle();assert.equal(h.service.store.value<Maintenance>('maintenance')!.taskId,m.taskId);assert.equal(sends.length,2);
+  h.service.store.complete(m.taskId,'succeeded','重启完成',undefined,['queued'],undefined,'maintenance-final');await h.service.settle();
+  assert.equal(sends.length,3);assert.equal(sends.at(-1).to_user_id,auth.userId);assert.match(sends.at(-1).item_list[0].text_item.text,/重启完成/);
+  assert(!existsSync(path.join(h.c.codex.home,'capture.json')));
 });

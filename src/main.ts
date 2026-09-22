@@ -11,6 +11,7 @@ import { Bridge } from './bridge.ts';
 import { LocalChannel, normalize } from './local.ts';
 import { OutboxPump } from './reply.ts';
 import { invariant, log } from './errors.ts';
+import { supervised } from './maintenance.ts';
 import type { AgentBackend, Channel } from './types.ts';
 export function createBackend(c: Config, media: MediaStore): AgentBackend {
   return c.backend === 'codex' ? new CodexBackend(c, image => media.read(image)) : new PiBackend(c, image => media.read(image));
@@ -46,6 +47,7 @@ export async function openService(c: Config, output: Writable, transport?: Trans
     bridge = new Bridge(c, channelId, store, transport?.channel ?? channel, backend, media, transport?.normalize, target => createBackend(target, media));
     const outbox = new OutboxPump(store, transport?.channel ?? channel, c.reply);
     bridge.start(); await media.gc(store.activeMedia());
+    if(supervised(c))process.send?.({type:'bridge-ready'});
     tick = setInterval(() => void outbox.tick().catch(() => log('outbox.error', {code:'OUTBOX_FAILURE'})), 100);
     gc = setInterval(() => void media.gc(store!.activeMedia()).catch(() => log('media.gc_error', {code:'MEDIA_GC_FAILED'})), 3600000);
     let stopping: Promise<void> | undefined;

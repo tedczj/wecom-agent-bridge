@@ -1,6 +1,6 @@
 # Bridge agent：目录定位、路由与会话规则
 
-状态：已实现并通过离线验收；真实语义模型与微信新路由交付尚未验收，证据见 verification.md。
+状态：已实现并通过离线验收；已验证一次真实路由 Agent 识别与原生历史读取，微信端修复后交付尚未验收，证据见 verification.md。
 日期：2026-09-22。
 审查基线：`5a5c488`（dev）。
 
@@ -171,7 +171,7 @@ bridge 应记住有助于目录定位和交互的事实，而不是积累所有�
 - `profiles`: `{id,version,backend?,agent?,codex?}` 数组；覆盖基础执行设置后经过原有严格配置校验。version 是 operator 版本；实际配置内容也参与摘要，改内容不能靠不改 version 绕过。
 - `workspaces`: `{id,path,profile,aliases?,description?}` 数组；包含基础 workspace，精确匹配优先于最长根匹配。不同配置不得重复真实目录。
 - `history`: boolean，默认 true；只读配置 backend 的 session root。设 false 明确表示 operator 不授权原生历史发现，bridge 自身会话仍可续接。
-- `interpreter?`: `{endpoint,model,apiKeyEnv?,timeoutMs?}`；可选 HTTPS Chat Completions JSON 接口，model 为 operator 提供的实际 ID。只传用户路由文本、有界对话及候选说明，不传凭据、工具输出和完整 worker 历史。禁止重定向，响应有上限；只接受有限动作 schema。没有解释器时支持文档列出的自然表达和 slash 控制；未知/歧义控制表达澄清，不能声称任意口语语义均已验证。
+- `interpreter?`: 优先采用 `{provider:"codex",model,reasoning?,timeoutMs?}` 复用 Codex 登录；也支持 `{provider:"http",endpoint,model,reasoning?,apiKeyEnv?,timeoutMs?}`。配置后普通自然语言先交给 Agent，slash 命令直接处理；模型失败不得退回 work 动作。只传用户路由文本、有界对话及候选说明；不传微信凭据、工具输出或完整 worker 历史。Codex interpreter 使用独立空 cwd、只读/ephemeral、JSON schema、忽略用户配置/规则和项目文档，禁用 shell/MCP/插件等执行配置并拒绝工具事件；保留完整 exec 终态/退出/清理检查。HTTP 禁止重定向，响应有上限；reasoning 作为 reasoning_effort 传递。没有解释器时才使用内置自然表达规则。
 
 配置和 stateRoot 必须在所有执行目录外，原有 HOME、隔离和环境白名单继续生效。初版不动态热加载配置；重启后重新验证目录设备/inode、真实路径及摘要。精确目录撤权、删除、替换均不得偷偷回默认目录。
 
@@ -195,9 +195,9 @@ Store 从 schema v2 事务升级为 v3，增加 routing 状态与 `last_response
 
 ## 14. 原生历史和选择
 
-Codex 从配置 CODEX_HOME/sessions 的 rollout JSONL 读取 session_meta、turn_context 和 event_msg；Pi 从配置 agent.sessionRoot 读取 session v3 JSONL header、message、model_change 和活动 parentId 分支。只读取规范化 cwd 相符、profile 所有权允许的记录。session root 是 operator 对账户/历史的授权边界，不能仅靠裸 UUID 推断账户。同一 Store 中，一个原生会话一旦被 bridge conversation/profile 绑定，其他 conversation/profile 不能认领。独立 bridge 安装应使用独立账户 session root；本实现没有跨安装的全局原生会话归属数据库。
+Codex 优先用 CODEX_HOME/state_5.sqlite 的 native threads 索引按规范化 cwd 定位 sessions rollout（只读，索引缺失/未知 schema 时遍历），再从 JSONL 读取 session_meta、turn_context 和 event_msg；Pi 从配置 agent.sessionRoot 读取 session v3 JSONL header、message、model_change 和活动 parentId 分支。只读取规范化 cwd 相符、profile 所有权允许的记录。session root 是 operator 对账户/历史的授权边界，不能仅靠裸 UUID 推断账户。同一 Store 中，一个原生会话一旦被 bridge conversation/profile 绑定，其他 conversation/profile 不能认领。独立 bridge 安装应使用独立账户 session root；本实现没有跨安装的全局原生会话归属数据库。
 
-每页有文件数/字节/时间上限；分页搜索遍历全部授权历史，而非只最近十条。格式不支持、权限、超限、超时显式失败/partial，不能当空历史。最后回复时间只用可信完成事件：Codex task_complete/turn_complete 的最终消息；Pi 原生消息本身不能证明 agent_settled，因此未经过 bridge 成功执行记录的 Pi 原生历史时间保持未知，可显式恢复但不自动猜测时间。当前 Pi backend 成功仍必须 agent_settled + idle + cleanup。
+每页有文件数/字节/时间上限；分页搜索不限最近十条。先以 256 KiB 内的首行验证 scope，再读匹配项目正文；明确的旧版无 cwd header 不作为可恢复来源，不解析无关项目正文。正文流式处理，上限 256 MiB/文件、8 MiB/帧，预览最多十条；达到约 32 MiB 页预算后在文件边界继续。已损坏/缺失文件计入不完整提示，权限和索引故障保持显式错误；存在未验证历史时禁止自动新建来掩盖错误。活动/中断/尾部尚未写完的记录可展示但不可恢复，模型和 reasoning 不一致也只供阅读。最后回复时间只用可信完成事件：Codex task_complete/turn_complete 的最终消息；Pi 原生消息本身不能证明 agent_settled，因此未经过 bridge 成功执行记录的 Pi 原生历史时间保持未知，可显式恢复但不自动猜测时间。当前 Pi backend 成功仍必须 agent_settled + idle + cleanup。
 
 没有绑定时，先完成有界原生发现；发现 partial 阻止自动选择，提示继续查询。绑定存在时不被更新的本地历史替换。新建/活跃尚无首答的 session 由持久化引用和活动 job 判断；已失败且无完整回复的空闲 session 不自动复用。恰好 24h 可复用，未来时间不自动复用。完整成功结果事务更新 last_response_at；所有 control/outbox/进度操作不更新。
 
@@ -211,6 +211,6 @@ Codex 从配置 CODEX_HOME/sessions 的 rollout JSONL 读取 session_meta、turn
 
 ## 16. 本次交付与证据
 
-配置示例：`config.routing.example.json`；使用说明：`README.md`；源码和验收逐项映射：`TEST_MATRIX.md`；本次命令与环境：`verification.md`。BR-01..BR-22 均有具名离线测试，原 58 ID 保留。默认不修改既有私人运行配置，也不重启现场微信实例。
+配置示例：`config.routing.example.json`；使用说明：`README.md`；源码和验收逐项映射：`TEST_MATRIX.md`；本次命令与环境：`verification.md`。BR-01..BR-22 均有具名离线测试，原 58 ID 保留。私人配置和现场重启只在用户授权下操作；本次已获授权配置 Codex 路由解释器，并在 commit/push 后重启。
 
-可选语义模型是外部依赖，未配置时只有明确列出的自然语言表达/slash 命令和澄清回答可用。未验证的真实模型分类准确性、真实 native 文件兼容、微信新路由投递及 OS 隔离不计为通过。更完整的 memory 生成、摘要、删除及分层治理不属于这次目录别名实现。
+已通过 --live 验证配置为 gpt-5.6-terra high 的 Codex Agent 识别一次 OCR session 进度查询，并只读解析现场 OCR 原生历史。该样本不代表普遍语义准确率、所有 native 版本、微信修复后投递或 OS 隔离通过。未配置解释器时仍仅支持内置表达。更完整的 memory 生成、摘要、删除及分层治理不属于这次目录别名实现。

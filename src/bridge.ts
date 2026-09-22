@@ -138,7 +138,7 @@ export class Bridge {
     while (this.preparing.size || this.worker) { await Promise.all([...this.preparing.values()].map(p => p.promise)); if (this.worker) await this.worker; }
   }
   async stop(): Promise<void> {
-    this.stopped = true;
+    this.stopped = true; this.router?.stop();
     for (const p of this.preparing.values()) p.controller.abort();
     if (this.active) { this.store.cancel(this.active.id); this.active.controller.abort(); }
     const grace = this.c.agent.cancelGraceMs + this.c.agent.killGraceMs * 3 + 1000;

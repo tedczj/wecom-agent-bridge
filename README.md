@@ -37,20 +37,26 @@
 | `当前目录简称微信桥`、`/alias 微信桥` | 保存有版本和来源的 scoped 别名 |
 | `先停一下`、`/cancel [taskId]` | 取消本对话任务；停止不确定仍阻塞 |
 
-无 `routing.interpreter` 时使用有界的中文表达及 slash 解析，不声称理解任意口语。需要语义解释和候选用途区分时可配置：
+配置 `routing.interpreter` 后，普通自然语言优先由 Agent 识别意图；程序校验目录/profile、会话归属和执行条件。显式 slash 命令直接处理。模型失败会明确报错，不降级为把原话交给工作 Agent。可复用现有 Codex 登录：
 
 ```json
 "interpreter": {
-  "endpoint": "https://your-provider.example/v1/chat/completions",
-  "model": "YOUR_ACTUAL_ROUTER_MODEL_ID",
-  "apiKeyEnv": "BRIDGE_ROUTER_API_KEY",
-  "timeoutMs": 10000
+  "provider": "codex",
+  "model": "gpt-5.6-terra",
+  "reasoning": "high",
+  "timeoutMs": 90000
 }
 ```
 
-该可选接口要求 Chat Completions 兼容的 JSON 输出；endpoint 和实际模型 ID 由 operator 验证。只做意图与候选判断，不执行 shell。密钥仅由宿主从指定环境变量读取，不传给 worker。解释器会接收用户原文的路由上下文和有限项目描述；超过输入/响应预算或服务失败时明确阻塞，不偷偷切目录。复杂语义准确性尚未进行真实模型验收。
+此方式要求基础 backend 为 Codex，并使用支持 `--ignore-user-config`、`--ephemeral`、`--output-schema` 的已安装 CLI。路由 Agent 使用独立空目录、只读沙箱和结构化输出；不加载用户 Codex 配置或项目文档，关闭 shell、图片查看、MCP、应用/插件和子 Agent 配置，拒绝任何执行工具事件。登录仍使用原有 Codex home。它负责识别意图、选择候选，宿主执行有界目录/会话读取；这些约束不是完整 OS 隔离证明。
 
-原生历史来源是配置的 Codex home 下 `sessions` 和 Pi sessionRoot。历史读取失败/partial 不当作空历史；`history:false` 明确关闭原生发现，仅保留 bridge 自己的会话。原生历史所属账户以 operator 授权的存储根为边界，应为不同账户使用独立根。Codex 用已验证完成事件的时间；Pi 原生文件不能证明 `agent_settled`，未被 bridge 验证成功的记录只供显式恢复。旧 schema v2 会事务升级为 v3，旧回复时间保留未知。启用新路由前应排空旧模式队列；跨模式排队任务不会自动执行。
+也保留 `provider:"http"`：配置 `endpoint`（HTTPS Chat Completions JSON 接口）、`model`、可选 `reasoning:"high"`、`apiKeyEnv` 和 `timeoutMs`。密钥仅在宿主读取。未配置解释器时才使用内置表达式规则，不声称理解任意口语。无论哪种方式，解释器只接收有界用户上下文和候选目录说明，不接收 worker 全部历史或微信 token。
+
+例如“查询 ocr service 的 GPT session 当前状态”应查询 OCR 历史，不切换当前目录，也不启动工作任务。列表展示活动状态；执行中/不完整会话可以阅读，但不能恢复。原生历史优先使用配置 Codex home 下 `state_5.sqlite` 的 cwd 索引定位 `sessions` rollout，再重新校验文件头；索引不可用/格式不支持时走目录扫描。已知没有 cwd 的旧版文件不作为任何项目的可恢复历史，其他目录的正文不解析。匹配项目按 JSONL 流式读取（256 MiB/文件、8 MiB/帧），单个坏文件保留不完整提示，不能据此自动新建任务。模型/推理配置不一致的历史仍可查看，但不自动恢复。
+
+Pi 原生文件不能证明 `agent_settled`，自动续接时间仍只来自 bridge 验证成功的回复。`history:false` 明确关闭原生发现，仅保留 bridge 会话。schema v2 事务升级为 v3，旧回复时间未知；跨模式排队任务不自动执行。不同账户应使用不同 session root。
+
+`npm run smoke:routing -- --live --config FILE` 仅调用路由 Agent 并只读查询 OCR 历史，不执行工作任务、不发微信消息；默认无 `--live` 拒绝运行。
 
 同一 bridge 全局串行；同用户、同宿主的多个 bridge 对同一真实目录还使用独占锁。执行中断后锁保留，`review --acknowledge-side-effects` 检查进程后清理本实例锁。外部 CLI、其他用户和脱离进程组的副作用不在该锁的保证内。
 

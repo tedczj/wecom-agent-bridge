@@ -118,3 +118,9 @@
 | BR-22 | 简称纠正版本递增，删除路径使别名失效 |
 
 还测试 Pi v3 不伪造 settled 时间、解释器 schema/响应上限/禁止重定向/实际配置模型保持。默认离线模型响应仅用于协议验证，不证明真实语义分类准确率、真实原生会话版本兼容或微信新路由送达。
+
+## 历史兼容与 Agent 优先修复
+
+`tests/unit/routing.test.ts` 新增 H01–H07、I01–I05：旧版无 cwd 文件、其他项目坏正文、native SQLite cwd 索引/失效路径、超过 8 MiB 流式 UTF-8、活动/半写入会话的读取与恢复分离、坏文件不完整提示、活动绑定不得被当作丢失新建、model/reasoning 匹配；Codex 分类优先、固定安全参数、工具事件拒绝、模型失败不转 worker、路径越权拒绝、HTTP high 参数、关闭时取消分类器。
+
+`smoke:routing` 必须 --live；只验证路由分类与只读 native history，不发送微信或派发 worker。现场观测与离线 doubles 分开记录于 verification.md。

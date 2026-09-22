@@ -1,5 +1,5 @@
 $ npm ci --no-audit --no-fund
 
-added 16 packages in 952ms
+added 16 packages in 950ms
 
-Exit code: 0. Installed from package-lock.json during this run; no offline dependency substitute.
+Exit code: 0. Current lockfile installation; no offline substitute.

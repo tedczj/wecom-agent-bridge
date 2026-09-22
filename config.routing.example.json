@@ -1,12 +1,19 @@
 {
   "transport": "local",
   "backend": "codex",
-  "workspace": { "id": "bridge", "path": "/absolute/path/to/projects/bridge" },
+  "workspace": {
+    "id": "bridge",
+    "path": "/absolute/path/to/projects/bridge"
+  },
   "stateRoot": "/absolute/path/to/private/bridge-state",
-  "local": { "actorId": "operator" },
+  "local": {
+    "actorId": "operator"
+  },
   "agent": {
     "command": "/absolute/path/to/codex",
-    "env": { "HOME": "/absolute/path/to/private/agent-home" },
+    "env": {
+      "HOME": "/absolute/path/to/private/agent-home"
+    },
     "sessionRoot": "/absolute/path/to/private/pi-sessions",
     "passEnv": [],
     "isolation": "native"
@@ -17,12 +24,49 @@
     "networkAccess": false
   },
   "routing": {
-    "roots": [ { "id": "projects", "path": "/absolute/path/to/projects", "profile": "codex-read" } ],
-    "profiles": [ { "id": "codex-read", "version": "1", "codex": { "reasoning": "medium" } } ],
-    "workspaces": [
-      { "id": "bridge", "path": "/absolute/path/to/projects/bridge", "profile": "codex-read", "aliases": ["微信桥"], "description": "个人微信与本地 Agent 桥接" },
-      { "id": "video", "path": "/absolute/path/to/projects/video", "profile": "codex-read", "aliases": ["配音", "视频项目"], "description": "视频配音项目" }
+    "roots": [
+      {
+        "id": "projects",
+        "path": "/absolute/path/to/projects",
+        "profile": "codex-read"
+      }
     ],
-    "history": true
+    "profiles": [
+      {
+        "id": "codex-read",
+        "version": "1",
+        "codex": {
+          "reasoning": "medium"
+        }
+      }
+    ],
+    "workspaces": [
+      {
+        "id": "bridge",
+        "path": "/absolute/path/to/projects/bridge",
+        "profile": "codex-read",
+        "aliases": [
+          "微信桥"
+        ],
+        "description": "个人微信与本地 Agent 桥接"
+      },
+      {
+        "id": "video",
+        "path": "/absolute/path/to/projects/video",
+        "profile": "codex-read",
+        "aliases": [
+          "配音",
+          "视频项目"
+        ],
+        "description": "视频配音项目"
+      }
+    ],
+    "history": true,
+    "interpreter": {
+      "provider": "codex",
+      "model": "gpt-5.6-terra",
+      "reasoning": "high",
+      "timeoutMs": 90000
+    }
   }
 }

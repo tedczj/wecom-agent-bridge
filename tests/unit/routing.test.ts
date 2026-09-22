@@ -1,3 +1,5 @@
+import { DatabaseSync } from 'node:sqlite';
+import { appendFileSync,existsSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
@@ -88,7 +90,7 @@ test('BR-14/19: active no-answer session is reused; queued workspace stays fixed
 });
 test('BR-15: native history error is not empty history and never dispatches a task',async t=>{
   const h=configured(t);h.c.routing!.history=true;mkdirSync(path.join(h.c.codex.home,'sessions'));writeFileSync(path.join(h.c.codex.home,'sessions','broken.jsonl'),'not json\n');
-  const r=await h.submit('first work');assert.equal(r.status,'failed');assert.equal(r.error_code,'HISTORY_FORMAT');assert.equal(h.backend.calls.length,0);
+  const r=await h.submit('first work');assert.equal(r.status,'failed');assert.equal(r.error_code,'HISTORY_UNVERIFIED');assert.equal(h.backend.calls.length,0);
 });
 test('BR-16: historical search covers older than ten; ordinal uses saved snapshot',async t=>{
   const h=configured(t);h.c.routing!.history=true;native(h,15);
@@ -223,4 +225,80 @@ test('BR-09: reading snapshot for another directory leaves current directory unc
 test('BR-15: missing bound native file is confirmed before prompt and explicitly reported',async t=>{
   const h=configured(t);h.c.routing!.history=true;const files=native(h);await h.submit('first');const first=h.backend.calls[0]!.sessionKey;
   rmSync(files[0]!);const r=await h.submit('second');assert.equal(r.status,'succeeded');assert.match(r.result_text!,/提交前确认已不存在/);assert.notEqual(h.backend.calls[1]!.sessionKey,first);assert.equal(h.backend.refs[1],undefined);
+});
+
+test('H01: legacy no-cwd rollout and corrupt foreign body cannot poison scoped history',async t=>{
+  const h=configured(t),files=native(h);const root=path.dirname(files[0]!);
+  writeFileSync(path.join(root,'legacy.jsonl'),JSON.stringify({id:randomUUID(),timestamp:new Date().toISOString(),instructions:'synthetic legacy'})+'\n');
+  writeFileSync(path.join(root,'foreign.jsonl'),JSON.stringify({type:'session_meta',payload:{id:randomUUID(),cwd:h.second}})+'\nBROKEN BODY\n');
+  const result=await h.router.history.scan(h.router.current(h.incoming()));assert.equal(result.scan.entries.length,1);assert.deepEqual(result.scan.issues,{});
+});
+test('H02: native index scopes first; stale paths are visible issues, never empty success',async t=>{
+  const h=configured(t),files=native(h);const db=new DatabaseSync(path.join(h.c.codex.home,'state_5.sqlite'));
+  db.exec('CREATE TABLE threads(cwd TEXT,rollout_path TEXT,archived INTEGER,updated_at INTEGER)');
+  db.prepare('INSERT INTO threads VALUES(?,?,0,1)').run(h.workspace,files[0]!);db.prepare('INSERT INTO threads VALUES(?,?,0,2)').run(h.second,path.join(h.c.codex.home,'sessions','does-not-exist'));
+  db.close();const reader=new NativeHistory(),first=await reader.scan(h.router.current(h.incoming()));assert.equal(first.scan.source,'native-index');assert.equal(first.scan.entries.length,1);assert.deepEqual(first.scan.issues,{});
+  rmSync(files[0]!);const second=await reader.scan(h.router.current(h.incoming()));assert.equal(second.scan.issues!.HISTORY_FILE_MISSING,1);
+});
+test('H03: streaming history accepts >8 MiB, UTF-8 and excludes discarded/nonfinal content',async t=>{
+  const h=configured(t),file=native(h)[0]!;
+  for(let n=0;n<150;n++)appendFileSync(file,JSON.stringify({type:'response_item',payload:{type:'function_call_output',output:'x'.repeat(65536)}})+'\n');
+  appendFileSync(file,JSON.stringify({type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'完整中文🛰️'}]}})+'\n');
+  const entry=await h.router.history.read(h.router.current(h.incoming()),file);assert(entry?.resumable);assert(entry.preview.at(-1)!.includes('完整中文🛰️'));assert(entry.preview.length<=10);
+});
+test('H04: active and partial-tail history is readable but cannot be resumed',async t=>{
+  const h=configured(t);h.c.routing!.history=true;const file=native(h)[0]!;
+  appendFileSync(file,JSON.stringify({type:'event_msg',payload:{type:'task_started'}})+'\n'+JSON.stringify({type:'response_item',payload:{type:'message',role:'assistant',content:[{type:'output_text',text:'正在检查合成任务'}]}})+'\n'+ '{"type":');
+  await h.submit('/sessions');const listing=h.router.state(h.incoming()).listing!;assert.equal(listing.entries[0]!.activity,'active');assert.equal(listing.entries[0]!.resumable,false);
+  const read=await h.submit('/read 1');assert.equal(read.status,'succeeded');assert.match(read.result_text!,/正在检查/);
+  const resume=await h.submit('/resume 1');assert.equal(resume.status,'failed');assert.equal(h.backend.calls.length,0);
+});
+test('H05: malformed matching history yields an incomplete list and blocks automatic new work',async t=>{
+  const h=configured(t);h.c.routing!.history=true;const file=native(h)[0]!;writeFileSync(path.join(path.dirname(file),'broken.jsonl'),'bad json\n');
+  const query=await h.submit('/sessions');assert.match(query.result_text!,/列表可能不完整/);assert.equal(h.router.state(h.incoming()).listing!.entries.length,1);
+  const task=await h.submit('ordinary work');assert.equal(task.error_code,'HISTORY_UNVERIFIED');assert.equal(h.backend.calls.length,0);
+});
+test('I01: configured Agent takes priority over natural-language rules; slash commands remain direct',async t=>{
+  const h=configured(t);h.c.agent.env.FAKE_MODE='router';h.c.routing!.interpreter={provider:'codex',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:1000};
+  h.c.routing!.history=true;native(h,1,1000,h.second);
+  const task=await h.submit('参考一下 second 目前 gpt session 进度');assert.equal(task.status,'succeeded');assert.equal(h.backend.calls.length,0);
+  const capture=JSON.parse(readFileSync(path.join(h.c.codex.home,'capture.json'),'utf8'));
+  assert(capture.args.includes('--ephemeral'));assert(capture.args.includes('--ignore-user-config'));assert(capture.args.includes('features.shell_tool=false'));assert(capture.args.includes('model_reasoning_effort="high"'));assert.equal(capture.args[capture.args.indexOf('--model')+1],'gpt-5.6-terra');assert.notEqual(capture.cwd,h.workspace);assert.equal(h.router.state(h.incoming()).listing!.entries.length,1);
+  rmSync(path.join(h.c.codex.home,'capture.json'));await h.submit('/status');assert(!existsSync(path.join(h.c.codex.home,'capture.json')));assert.equal(h.router.current(h.incoming()).directory.id,'test');
+});
+test('I02: model failure does not fall back to executing ordinary text; no tool results accepted',async t=>{
+  const h=configured(t);h.c.routing!.interpreter={provider:'codex',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:1000};
+  // Normal fake emits a synthetic tool event. A routing Agent must reject that protocol.
+  const failed=await h.submit('look at session progress');assert.equal(failed.error_code,'ROUTER_TOOL_ATTEMPT');assert.equal(h.backend.calls.length,0);
+  assert(!existsSync(path.join(h.c.stateRoot,'routing-agent','state','agent-process.json')));
+});
+test('I03: host rejects model path escalation and validates codex interpreter configuration',async t=>{
+  const h=configured(t);h.c.agent.env.FAKE_MODE='router';h.c.agent.env.FAKE_ROUTER_ACTION='switch';h.c.agent.env.FAKE_ROUTER_QUERY='/etc';h.c.routing!.interpreter={provider:'codex',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:1000};
+  const failed=await h.submit('请处理目录');assert.equal(failed.status,'failed');assert.equal(h.backend.calls.length,0);assert.equal(h.router.state(h.incoming()).active,undefined);
+  assert.throws(()=>parseRouting({...h.c.routing,interpreter:{provider:'codex',model:'x',endpoint:'https://example.invalid'}}),/ROUTING_INTERPRETER_CONFIG/);
+  assert.throws(()=>parseRouting({...h.c.routing,interpreter:{provider:'codex',model:'x',reasoning:'unbounded'}}),/CONFIG_REASONING/);
+});
+test('I04: HTTP reasoning uses configured high and does not send unsupported temperature',async()=>{
+  let body:any;const fake=(async(_u:unknown,init:RequestInit)=>{body=JSON.parse(init.body as string);return new Response(JSON.stringify({choices:[{message:{content:'{"action":"work"}'}}]}));}) as typeof fetch;
+  await modelJSON({endpoint:'https://example.invalid/api',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:1000},'classify',{},fake);
+  assert.equal(body.reasoning_effort,'high');assert.equal(body.temperature,undefined);
+});
+test('I05: shutdown cancels in-flight routing Agent and never dispatches queued work',async t=>{
+  const h=configured(t);h.c.agent.env.FAKE_MODE='startup-hang';h.c.routing!.interpreter={provider:'codex',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:2000};
+  const accepted=h.bridge.accept(fixture('natural language while routing is pending'));
+  const marker=path.join(h.c.stateRoot,'routing-agent','state','agent-process.json');await eventually(()=>existsSync(marker));
+  await h.bridge.stop();assert.equal((await accepted).rejected,'STOPPING');assert(!existsSync(marker));assert.equal(h.backend.calls.length,0);
+});
+test('H06: bound session becoming active is not treated as missing and silently replaced',async t=>{
+  const h=configured(t);h.c.routing!.history=true;const file=native(h)[0]!;await h.submit('first');const key=h.backend.calls[0]!.sessionKey;
+  appendFileSync(file,JSON.stringify({type:'event_msg',payload:{type:'task_started'}})+'\n');
+  const next=await h.submit('followup');assert.equal(next.error_code,'SESSION_NOT_RESUMABLE');assert.equal(h.backend.calls.length,1);assert.equal(h.store.bound(h.router.base(h.incoming(),h.router.current(h.incoming())))!.session_key,key);
+});
+test('H07: model and reasoning changes keep history readable without authorizing profile resume',async t=>{
+  const h=configured(t),file=native(h)[0]!,target=h.router.current(h.incoming());
+  target.config.codex.model='gpt-6-astra';target.config.codex.reasoning='high';
+  appendFileSync(file,JSON.stringify({type:'turn_context',payload:{cwd:h.workspace,model:'gpt-6-astra',effort:'medium'}})+'\n');
+  assert.equal((await h.router.history.read(target,file))!.resumable,false);
+  appendFileSync(file,JSON.stringify({type:'turn_context',payload:{cwd:h.workspace,model:'gpt-6-astra',effort:'high'}})+'\n');
+  assert.equal((await h.router.history.read(target,file))!.resumable,true);
 });

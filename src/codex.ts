@@ -12,7 +12,8 @@ import { deadline, withSignal } from './async.ts';
 import type { AgentBackend, AgentResult, ImageRef, NormalizedInput, RunHooks, SessionRef } from './types.ts';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** CLI contract: options precede resume; image options follow the explicit thread ID. */
-export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef): string[] {
+export interface RoutingExecution { schemaPath:string;instructionsPath:string }
+export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef, routing?:RoutingExecution): string[] {
   invariant(c.agent.args.length === 0, 'CODEX_ARGS_NOT_ALLOWED');
   invariant(c.codex.sandbox === 'read-only' || c.codex.sandbox === 'workspace-write', 'UNSAFE_SANDBOX');
   if (saved) invariant(saved.kind === 'codex' && uuid.test(saved.threadId), 'SESSION_BACKEND_MISMATCH');
@@ -21,6 +22,14 @@ export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef): st
     '--config', 'web_search="disabled"'];
   if (c.codex.model) args.push('--model', c.codex.model);
   if (c.codex.reasoning) args.push('--config', `model_reasoning_effort="${c.codex.reasoning}"`);
+  if(routing) {
+    invariant(!saved && images.length===0 && c.codex.sandbox==='read-only','ROUTER_EXECUTION_POLICY');
+    args.push('--ephemeral','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--output-schema',routing.schemaPath,
+      '--config',`model_instructions_file=${JSON.stringify(routing.instructionsPath)}`,
+      '--config','project_doc_max_bytes=0','--config','features.shell_tool=false','--config','features.view_image=false',
+      '--config','features.multi_agent_v2=false','--config','agents.enabled=false','--config','features.apps=false',
+      '--config','features.plugins=false','--config','mcp_servers={}');
+  }
   if (saved?.kind === 'codex') args.push('resume', saved.threadId);
   for (const image of images) args.push('--image', image.localPath);
   args.push('-'); // Prompt through stdin, never through a shell or the process argument list.
@@ -56,7 +65,7 @@ async function terminateGroup(child: ChildProcessWithoutNullStreams, graceMs: nu
 export class CodexBackend implements AgentBackend {
   private running = false;
   private active?: { controller: AbortController; done: Promise<void> };
-  constructor(private c: Config, private imageReader?: (image: ImageRef) => Promise<Buffer>) {}
+  constructor(private c: Config, private imageReader?: (image: ImageRef) => Promise<Buffer>,private routing?:RoutingExecution) {}
   async start(): Promise<void> {
     invariant(process.platform !== 'win32', 'PLATFORM_UNSUPPORTED');
     invariant(this.c.backend === 'codex', 'SESSION_BACKEND_MISMATCH');
@@ -88,7 +97,7 @@ export class CodexBackend implements AgentBackend {
     try {
       if (controller.signal.aborted) throw new BridgeError('ABORTED');
       await this.start();
-      const args = codexArgs(this.c, input.images, saved);
+      const args = codexArgs(this.c, input.images, saved,this.routing);
       for (const image of input.images) {
         // A persisted path alone is never sufficient: validate bytes again immediately before exec.
         const bytes = this.imageReader ? await this.imageReader(image) : await readControlled(path.join(this.c.stateRoot, 'media'), image.localPath, this.c.media.maxImageBytes);
@@ -118,6 +127,9 @@ export class CodexBackend implements AgentBackend {
           framer.push(chunk as Buffer);
           for (const event of batch) {
             invariant(typeof event.type === 'string', 'CODEX_PROTOCOL');
+            if(this.routing && ['item.started','item.completed','item.updated'].includes(event.type)) {
+              const item=record(event.item);invariant(['agent_message','reasoning'].includes(String(item.type)),'ROUTER_TOOL_ATTEMPT');
+            }
             if (event.type === 'thread.started') {
               invariant(!threadSeen && !turnStarted && typeof event.thread_id === 'string' && uuid.test(event.thread_id), 'CODEX_THREAD_ID');
               if (saved?.kind === 'codex') invariant(saved.threadId === event.thread_id, 'SESSION_RESTORE_MISMATCH');

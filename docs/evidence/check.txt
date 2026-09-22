@@ -16,244 +16,257 @@
 
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ C01/B02: actual exec child, final result, persistent thread and explicit resume (111.0595ms)
-✔ C02/B01: real image bytes reach the exec child through --image (60.849875ms)
-✔ C03: stored-image tampering fails before process creation (8.206959ms)
-✔ C04/B03: no saved reference creates a distinct thread (104.80925ms)
-✔ C05: final event alone does not settle before the child exits (198.343459ms)
-✔ C06: ack-only cannot be reported as successful (45.725333ms)
-✔ C06: exit-error cannot be reported as successful (43.626ms)
-✔ C06: malformed cannot be reported as successful (52.359584ms)
-✔ C06: truncated cannot be reported as successful (55.794084ms)
-✔ C06: bad-order cannot be reported as successful (55.226583ms)
-✔ C06: duplicate-terminal cannot be reported as successful (52.73725ms)
-✔ C07/P08: oversized output is bounded and the process is cleaned up (54.278792ms)
-✔ C08/B04/D08: failed turn and auth failure return codes, never raw error/secret (90.447541ms)
-✔ C09/B04: empty final is a failure; reasoning/tool outputs are not answers (44.302ms)
-✔ C10: resume mismatch blocks, without saving the wrong reference (53.799167ms)
-✔ C11/B06: thread persistence failure is uncertain, not an automatic retry (53.058292ms)
-✔ C12/B05: cancellation stops real writes and conservatively blocks uncertain work (168.098208ms)
-✔ C13/B05: SIGTERM-ignoring child is escalated; stop() waits for cleanup (226.992542ms)
-✔ C14/B05: owned grandchild writer stops or cleanup remains explicitly unknown (239.645541ms)
-✔ C15: startup and task timeouts are finite and never pretend the task succeeded (95.697834ms)
-✔ C16: pre-cancelled input and unavailable executable do not launch a child (1.889667ms)
-✔ C17: prompt injection stays stdin data; no shell interpolation, no parent secret (41.905166ms)
-✔ C18: overlapping run calls are rejected rather than corrupting ownership (2.130042ms)
-✔ C19: denied cleanup signal requires confirmed group disappearance (true) (203.794791ms)
-✔ C19: denied cleanup signal requires confirmed group disappearance (false) (204.645875ms)
+✔ C01/B02: actual exec child, final result, persistent thread and explicit resume (106.293167ms)
+✔ C02/B01: real image bytes reach the exec child through --image (49.066459ms)
+✔ C03: stored-image tampering fails before process creation (6.723ms)
+✔ C04/B03: no saved reference creates a distinct thread (91.403333ms)
+✔ C05: final event alone does not settle before the child exits (194.680958ms)
+✔ C06: ack-only cannot be reported as successful (41.577125ms)
+✔ C06: exit-error cannot be reported as successful (39.355042ms)
+✔ C06: malformed cannot be reported as successful (51.74325ms)
+✔ C06: truncated cannot be reported as successful (53.948458ms)
+✔ C06: bad-order cannot be reported as successful (51.694833ms)
+✔ C06: duplicate-terminal cannot be reported as successful (54.6745ms)
+✔ C07/P08: oversized output is bounded and the process is cleaned up (57.146959ms)
+✔ C08/B04/D08: failed turn and auth failure return codes, never raw error/secret (84.554042ms)
+✔ C09/B04: empty final is a failure; reasoning/tool outputs are not answers (46.414291ms)
+✔ C10: resume mismatch blocks, without saving the wrong reference (49.400708ms)
+✔ C11/B06: thread persistence failure is uncertain, not an automatic retry (52.725166ms)
+✔ C12/B05: cancellation stops real writes and conservatively blocks uncertain work (164.100708ms)
+✔ C13/B05: SIGTERM-ignoring child is escalated; stop() waits for cleanup (236.714166ms)
+✔ C14/B05: owned grandchild writer stops or cleanup remains explicitly unknown (244.824208ms)
+✔ C15: startup and task timeouts are finite and never pretend the task succeeded (96.8055ms)
+✔ C16: pre-cancelled input and unavailable executable do not launch a child (1.567625ms)
+✔ C17: prompt injection stays stdin data; no shell interpolation, no parent secret (38.333667ms)
+✔ C18: overlapping run calls are rejected rather than corrupting ownership (1.849ms)
+✔ C19: denied cleanup signal requires confirmed group disappearance (true) (204.59825ms)
+✔ C19: denied cleanup signal requires confirmed group disappearance (false) (204.833833ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ Pi B01/B02: native image bytes and persisted session resume (174.474584ms)
-✔ Pi P03/P04/P09: delayed never completes on ACK, agent_end or stale events (183.602375ms)
-✔ Pi P03/P04/P09: retry never completes on ACK, agent_end or stale events (173.977458ms)
-✔ Pi P03/P04/P09: stale never completes on ACK, agent_end or stale events (67.607625ms)
-✔ Pi P05/P06/P07/B04: error (64.761125ms)
-✔ Pi P05/P06/P07/B04: reject (50.169583ms)
-✔ Pi P05/P06/P07/B04: session-cancel (51.475875ms)
-✔ Pi P05/P06/P07/B04: empty (61.585083ms)
-✔ Pi P08/P10: exit is not successful or automatically approved (49.703834ms)
-✔ Pi P08/P10: malformed is not successful or automatically approved (52.888583ms)
-✔ Pi P08/P10: ui is not successful or automatically approved (57.810125ms)
-✔ Pi P12/B06: missing historical file fails; unsaved fresh ref allowed; persistence failure prevents prompt (227.306333ms)
-✔ Pi B05: cancellation hang is settled or conservatively interrupted (59.360167ms)
-✔ Pi B05: cancellation ignore-abort is settled or conservatively interrupted (211.664042ms)
-✔ Pi marker belonging to another process is never removed (1.594ms)
+✔ Pi B01/B02: native image bytes and persisted session resume (164.464875ms)
+✔ Pi P03/P04/P09: delayed never completes on ACK, agent_end or stale events (175.926667ms)
+✔ Pi P03/P04/P09: retry never completes on ACK, agent_end or stale events (191.628542ms)
+✔ Pi P03/P04/P09: stale never completes on ACK, agent_end or stale events (61.528541ms)
+✔ Pi P05/P06/P07/B04: error (64.8775ms)
+✔ Pi P05/P06/P07/B04: reject (54.223958ms)
+✔ Pi P05/P06/P07/B04: session-cancel (51.739375ms)
+✔ Pi P05/P06/P07/B04: empty (61.9965ms)
+✔ Pi P08/P10: exit is not successful or automatically approved (41.803459ms)
+✔ Pi P08/P10: malformed is not successful or automatically approved (53.299834ms)
+✔ Pi P08/P10: ui is not successful or automatically approved (55.338625ms)
+✔ Pi P12/B06: missing historical file fails; unsaved fresh ref allowed; persistence failure prevents prompt (232.144583ms)
+✔ Pi B05: cancellation hang is settled or conservatively interrupted (61.34625ms)
+✔ Pi B05: cancellation ignore-abort is settled or conservatively interrupted (214.776584ms)
+✔ Pi marker belonging to another process is never removed (1.786333ms)
 {"event":"weixin.api_rejected","code":"WEIXIN_API_REJECTED","apiRet":5}
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ W01: only paired personal user and matching bot can execute, with stable conversation identity (4.658584ms)
-✔ W02: voice transcription is accepted; missing transcript, files and quoted context are explicit unsupported cases (1.694375ms)
-✔ W03: API headers, lossless uint64 message IDs, business errors and bounded responses (21.907083ms)
-✔ W04: QR verification/redirect then confirmed login; credentials stay private and are reused (1004.803875ms)
-✔ W05: image decrypt supports raw/base64 hex keys; downloads are bounded and host restricted (1.319541ms)
-{"event":"weixin.accepted","taskId":"fc8ab210-db26-40ca-b57e-6d8fbcc251fa"}
-{"event":"task.finished","taskId":"fc8ab210-db26-40ca-b57e-6d8fbcc251fa","state":"succeeded"}
-{"event":"weixin.accepted","taskId":"cea90e44-6550-4319-ae80-58700963015d"}
-{"event":"task.finished","taskId":"cea90e44-6550-4319-ae80-58700963015d","state":"succeeded"}
-✔ W06: personal messages reach real child double, persist context, deduplicate and reply to owner (105.390333ms)
+✔ W01: only paired personal user and matching bot can execute, with stable conversation identity (4.375292ms)
+✔ W02: voice transcription is accepted; missing transcript, files and quoted context are explicit unsupported cases (1.719083ms)
+✔ W03: API headers, lossless uint64 message IDs, business errors and bounded responses (20.110542ms)
+✔ W04: QR verification/redirect then confirmed login; credentials stay private and are reused (1004.756583ms)
+✔ W05: image decrypt supports raw/base64 hex keys; downloads are bounded and host restricted (1.354875ms)
+{"event":"weixin.accepted","taskId":"e9e99fd3-e414-48ee-9553-5f51acfd4ea7"}
+{"event":"task.finished","taskId":"e9e99fd3-e414-48ee-9553-5f51acfd4ea7","state":"succeeded"}
+{"event":"weixin.accepted","taskId":"19d40e4d-b734-4321-bca6-3c9ded1019ea"}
+{"event":"task.finished","taskId":"19d40e4d-b734-4321-bca6-3c9ded1019ea","state":"succeeded"}
+✔ W06: personal messages reach real child double, persist context, deduplicate and reply to owner (110.807625ms)
 {"event":"weixin.message_rejected","code":"WEIXIN_UNAUTHORIZED"}
-{"event":"weixin.accepted","taskId":"d81d6f0d-d3cd-4081-a9b3-8e213353f177"}
-{"event":"task.finished","taskId":"d81d6f0d-d3cd-4081-a9b3-8e213353f177","state":"succeeded"}
-✔ W07: encrypted image reaches Agent as validated bytes; unauthorised media never downloads (68.418167ms)
-✔ W08: voice without transcript replies with limitation and never starts Agent (9.161083ms)
-{"event":"weixin.accepted","taskId":"1e132f4f-b331-417b-8daf-3b9daf915d4b"}
-{"event":"task.finished","taskId":"1e132f4f-b331-417b-8daf-3b9daf915d4b","state":"succeeded"}
-✔ W09: send ACK uncertainty stays unknown without resend or Agent replay (53.973417ms)
+{"event":"weixin.accepted","taskId":"62ec5141-bb40-4461-9b30-6953931ed418"}
+{"event":"task.finished","taskId":"62ec5141-bb40-4461-9b30-6953931ed418","state":"succeeded"}
+✔ W07: encrypted image reaches Agent as validated bytes; unauthorised media never downloads (57.721458ms)
+✔ W08: voice without transcript replies with limitation and never starts Agent (7.38975ms)
+{"event":"weixin.accepted","taskId":"fda5aab2-7ea4-4200-924a-a82fbb75e734"}
+{"event":"task.finished","taskId":"fda5aab2-7ea4-4200-924a-a82fbb75e734","state":"succeeded"}
+✔ W09: send ACK uncertainty stays unknown without resend or Agent replay (47.989542ms)
 微信接收已启动，工作目录：<TEMP_PATH>
 请在手机微信 ClawBot 私聊中发消息。
 {"event":"weixin.message_rejected","code":"WEIXIN_NOT_USER_MESSAGE"}
-{"event":"weixin.accepted","taskId":"28639f93-e784-477d-b8e4-ac3c2062d6fc"}
-✔ W10: long-poll saves cursor after acceptance, ignores bot echoes and aborts cleanly (115.322333ms)
-✔ W11: transport and bound account cannot be silently changed to deliver old results (15.929292ms)
-{"event":"weixin.accepted","taskId":"c2a20dd5-ed51-4d84-b7ca-3b9f04f7b4aa"}
-{"event":"task.finished","taskId":"c2a20dd5-ed51-4d84-b7ca-3b9f04f7b4aa","state":"succeeded"}
+{"event":"weixin.accepted","taskId":"add052a4-67c2-409e-ba48-821aea7ef3cf"}
+✔ W10: long-poll saves cursor after acceptance, ignores bot echoes and aborts cleanly (111.91975ms)
+✔ W11: transport and bound account cannot be silently changed to deliver old results (16.947708ms)
+{"event":"weixin.accepted","taskId":"1558ecd1-71f2-4334-a744-50ac6cfb25d2"}
+{"event":"task.finished","taskId":"1558ecd1-71f2-4334-a744-50ac6cfb25d2","state":"succeeded"}
 {"event":"weixin.api_rejected","code":"WEIXIN_API_REJECTED","apiRet":1}
 {"event":"weixin.api_rejected","code":"WEIXIN_API_REJECTED","apiErrcode":7}
 {"event":"weixin.api_rejected","code":"WEIXIN_API_REJECTED","apiRet":0,"apiErrcode":9}
-✔ W12: replay before cursor commit deduplicates without a second Agent execution (47.715042ms)
-✔ W13: real iLink success envelopes omit ret; getupdates and sendmessage must accept them (1.00825ms)
-{"event":"weixin.accepted","taskId":"e8bff061-5c77-47fa-9d79-b0eac7e19a8c"}
-{"event":"task.finished","taskId":"e8bff061-5c77-47fa-9d79-b0eac7e19a8c","state":"succeeded"}
-✔ W14: omitted success codes support complete intake, Agent execution, reply ACK and cursor persistence (47.50125ms)
-{"event":"task.finished","taskId":"2a7be63c-5d3e-47e2-9f21-cf08d2c4a9e5","state":"succeeded"}
-{"event":"task.finished","taskId":"c744ff0f-334e-49bf-b819-2a55cb599ebc","state":"succeeded"}
-{"event":"task.finished","taskId":"8b0daf0d-5d4f-4d9e-9921-ff18882108e4","state":"succeeded"}
+✔ W12: replay before cursor commit deduplicates without a second Agent execution (48.762083ms)
+✔ W13: real iLink success envelopes omit ret; getupdates and sendmessage must accept them (1.057875ms)
+{"event":"weixin.accepted","taskId":"8fbd4682-6a63-42ff-bce8-464c7d78b92e"}
+{"event":"task.finished","taskId":"8fbd4682-6a63-42ff-bce8-464c7d78b92e","state":"succeeded"}
+✔ W14: omitted success codes support complete intake, Agent execution, reply ACK and cursor persistence (48.22575ms)
+{"event":"task.finished","taskId":"b16c7a8f-7fa0-40d6-817f-22b67c4ec99e","state":"succeeded"}
+{"event":"task.finished","taskId":"84eceda7-1015-4ec3-93be-406f435758b2","state":"succeeded"}
+{"event":"task.finished","taskId":"010f099c-1d46-4e84-a120-9d9f285b2baf","state":"succeeded"}
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ N02/Q01: concurrent duplicate submissions execute once and survive store replay (14.741333ms)
-✔ Q05/B03: duplicate /new increments generation once and never invokes Agent (12.537417ms)
-✔ N08: unknown command fails explicitly without running Agent (5.625584ms)
-{"event":"task.finished","taskId":"ce9a9bf8-61ba-4c7a-bcca-83854bed1b08","state":"succeeded"}
-{"event":"task.finished","taskId":"e78540c5-e211-4bba-9a48-1d82efdd9ac7","state":"succeeded"}
-✔ Q08/Q04: control commands do not wait for Agent; rejected tasks start no media work (20.708209ms)
-{"event":"task.finished","taskId":"0472872b-d2e8-40dc-9c58-89cee71b390f","state":"succeeded"}
-{"event":"task.finished","taskId":"88193a3c-f2b2-4bca-9f1b-ecd6c4b8417f","state":"succeeded"}
-✔ M10: later image is persisted while previous Agent turn is still running (37.682875ms)
-{"event":"task.finished","taskId":"3a84cd34-8959-49a9-97e7-6530833431ba","state":"succeeded"}
-{"event":"task.finished","taskId":"1003d922-a84b-4d27-897e-b875d41c7ca3","state":"succeeded"}
-{"event":"task.finished","taskId":"b458e2d7-c15f-435d-b396-b15a41c4a56d","state":"succeeded"}
-{"event":"task.finished","taskId":"1eeddaff-19f6-4056-b4be-2da2b3c8fa26","state":"succeeded"}
-✔ Q03: preparing image cannot be overtaken by a later text (42.1815ms)
-✔ Q06: commands cannot cancel or retrieve another conversation task (8.845ms)
-✔ D07/R05: explicit result retrieval is delivery only, never Agent execution (9.70375ms)
-{"event":"task.finished","taskId":"fbb306d3-7a1b-4265-a5d5-b572acd92692","state":"succeeded"}
-{"event":"task.finished","taskId":"0277399c-261e-4316-96c3-1b77b8cda2c6","state":"succeeded"}
-✔ E2E Codex: complete local transport/store/backend/reply and restart resume (111.124833ms)
-{"event":"task.finished","taskId":"340aa622-aae7-40f4-a0da-fa8f872d30c1","state":"interrupted"}
-✔ E2E Codex: cancelled task blocks new execution and /new cannot bypass review (78.952833ms)
+✔ N02/Q01: concurrent duplicate submissions execute once and survive store replay (21.024042ms)
+✔ Q05/B03: duplicate /new increments generation once and never invokes Agent (17.269208ms)
+✔ N08: unknown command fails explicitly without running Agent (5.769458ms)
+{"event":"task.finished","taskId":"219bf564-74ec-4a9d-96a8-ce76369b04cf","state":"succeeded"}
+{"event":"task.finished","taskId":"d4fb723c-7fe4-4f08-a9cc-dd675ae90b38","state":"succeeded"}
+✔ Q08/Q04: control commands do not wait for Agent; rejected tasks start no media work (21.547708ms)
+{"event":"task.finished","taskId":"c8f84240-71ff-4f6c-a6fe-785e00ad2139","state":"succeeded"}
+{"event":"task.finished","taskId":"c63917a0-4163-46fd-a23d-e322bba9556b","state":"succeeded"}
+✔ M10: later image is persisted while previous Agent turn is still running (33.921375ms)
+{"event":"task.finished","taskId":"34c74919-aa6d-446b-ae1c-48f2d9840192","state":"succeeded"}
+{"event":"task.finished","taskId":"f20b52ff-994a-4261-924b-d1c82d9500f5","state":"succeeded"}
+{"event":"task.finished","taskId":"9a0bd5e5-2f31-41f0-b4d0-6eaade5c90be","state":"succeeded"}
+{"event":"task.finished","taskId":"69f3a932-73b7-422d-8078-0f66a37f8b40","state":"succeeded"}
+✔ Q03: preparing image cannot be overtaken by a later text (42.436584ms)
+✔ Q06: commands cannot cancel or retrieve another conversation task (8.511959ms)
+✔ D07/R05: explicit result retrieval is delivery only, never Agent execution (10.466667ms)
+{"event":"task.finished","taskId":"3dda24ee-bf7c-4c2c-846c-cca0ee1dcf92","state":"succeeded"}
+{"event":"task.finished","taskId":"ec653999-c753-4fe1-a086-6163d460208f","state":"succeeded"}
+✔ E2E Codex: complete local transport/store/backend/reply and restart resume (105.50075ms)
+{"event":"task.finished","taskId":"c5e4a194-353e-42b4-a4c5-108354148e6b","state":"interrupted"}
+✔ E2E Codex: cancelled task blocks new execution and /new cannot bypass review (73.546416ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ CLI01: run, resume, duplicate id, status and result work without network credentials (506.865584ms)
-✔ CLI02: local image-only input reaches selected Codex executable (139.584ms)
-✔ CLI03: serve consumes JSONL and routes results to correct local sessions (184.891084ms)
-✔ CLI04: malformed/truncated JSONL, duplicate flags, and missing configuration fail (236.614375ms)
-✔ CLI05: SIGINT stops actual writes, exits 130, persists interrupted, requires manual review (518.129166ms)
-✔ CLI06: Pi selection uses RPC, without any Codex executable (139.441375ms)
+✔ CLI01: run, resume, duplicate id, status and result work without network credentials (499.27975ms)
+✔ CLI02: local image-only input reaches selected Codex executable (129.305542ms)
+✔ CLI03: serve consumes JSONL and routes results to correct local sessions (170.91625ms)
+✔ CLI04: malformed/truncated JSONL, duplicate flags, and missing configuration fail (223.710625ms)
+✔ CLI05: SIGINT stops actual writes, exits 130, persists interrupted, requires manual review (519.40325ms)
+✔ CLI06: Pi selection uses RPC, without any Codex executable (136.222458ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ R01: SIGKILL preparing fails safely and removes orphan partial files (58.976041ms)
-{"event":"task.finished","taskId":"f3cab6c2-0011-4e55-9897-3b670a95e4fa","state":"succeeded"}
-✔ R02: SIGKILL queued executes once after restart; replay remains deduplicated (55.951916ms)
-✔ R03: SIGKILL after side effects blocks workspace; no automatic rerun or reset (51.940792ms)
-✔ R04: SIGKILL inside transaction rolls back result and terminal status (52.349583ms)
-✔ R05: SIGKILL after result commit recovers delivery only, never execution (58.18525ms)
-✔ R06: SIGKILL while sending becomes unknown; /result does not run Agent (49.235791ms)
+✔ R01: SIGKILL preparing fails safely and removes orphan partial files (72.203875ms)
+{"event":"task.finished","taskId":"6214259f-9ca9-4907-9cda-8e3e7eb9f0f3","state":"succeeded"}
+✔ R02: SIGKILL queued executes once after restart; replay remains deduplicated (51.129042ms)
+✔ R03: SIGKILL after side effects blocks workspace; no automatic rerun or reset (49.223542ms)
+✔ R04: SIGKILL inside transaction rolls back result and terminal status (49.91875ms)
+✔ R05: SIGKILL after result commit recovers delivery only, never execution (45.974125ms)
+✔ R06: SIGKILL while sending becomes unknown; /result does not run Agent (48.810333ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ start.sh: restarts its live instance, recovers a stale lock and preserves JSONL stdout (20781.959958ms)
-✔ start.sh: refuses a lock pointing to an unrelated live process (1222.722333ms)
-✔ start.sh: explicit backend switch preserves shared state and stops only the matching instance (5289.132458ms)
-✔ start.sh: refuses switching queued work to another backend, including after a crash (1229.202625ms)
+✔ start.sh: restarts its live instance, recovers a stale lock and preserves JSONL stdout (20855.680542ms)
+✔ start.sh: refuses a lock pointing to an unrelated live process (1218.023375ms)
+✔ start.sh: explicit backend switch preserves shared state and stops only the matching instance (5209.145958ms)
+✔ start.sh: refuses switching queued work to another backend, including after a crash (1200.496625ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ N01/N04: local identity is operator-bound; request IDs must be supplied (3.69875ms)
-✔ N03/N06: remote identities and quote/mixed fields cannot be injected (1.722041ms)
-✔ N05/N07: local conversations are isolated; images preserve order (2.774042ms)
-✔ M04: URL images and command attachments are rejected, with no downloader (2.03125ms)
-✔ P01/P02: bytewise UTF-8, CRLF and embedded U+2028/U+2029 preserve frames (0.331959ms)
-✔ P08: invalid UTF-8/JSON, oversized and truncated frames fail closed (0.209708ms)
-✔ P11: inherited process credentials and injection environments are excluded (1.722417ms)
-✔ config: removed transport keys and unsafe Codex options cannot silently activate (2.139541ms)
-✔ config: paths, overlap, ranges, backend and concurrency are validated (2.959542ms)
-✔ D01/D07: UTF-8 budget, pagination and explicit truncation (1.750792ms)
-✔ Codex argv: explicit resume ID, images after resume, restrictive flags, stdin prompt (1.717084ms)
+✔ N01/N04: local identity is operator-bound; request IDs must be supplied (10.297292ms)
+✔ N03/N06: remote identities and quote/mixed fields cannot be injected (2.421875ms)
+✔ N05/N07: local conversations are isolated; images preserve order (3.122375ms)
+✔ M04: URL images and command attachments are rejected, with no downloader (2.103333ms)
+✔ P01/P02: bytewise UTF-8, CRLF and embedded U+2028/U+2029 preserve frames (0.32575ms)
+✔ P08: invalid UTF-8/JSON, oversized and truncated frames fail closed (0.224417ms)
+✔ P11: inherited process credentials and injection environments are excluded (2.5125ms)
+✔ config: removed transport keys and unsafe Codex options cannot silently activate (1.947708ms)
+✔ config: paths, overlap, ranges, backend and concurrency are validated (2.13ms)
+✔ D01/D07: UTF-8 budget, pagination and explicit truncation (1.650792ms)
+✔ Codex argv: explicit resume ID, images after resume, restrictive flags, stdin prompt (2.022791ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ M01/B01: copied image bytes, dimensions, format and digest match (24.618375ms)
-✔ M03: byte and aggregate budgets reject input and remove partial directories (16.538959ms)
-✔ M05: renamed HTML/SVG/executable are not accepted as images (20.909583ms)
-✔ M06: per-image and aggregate pixel limits are enforced (16.423917ms)
-✔ M06: truncated payload must pass full decode, not merely metadata (9.599125ms)
-✔ M07/M08: missing files, symlinks, escaped references and tampering fail (9.638ms)
-✔ M09/R01: active media survives TTL; inactive stale/partial files are removed (4.884666ms)
-✔ media: cancellation and count limit are checked before file I/O (2.215375ms)
-✔ M06: valid animated WebP is rejected before Agent input (5.2395ms)
-{"event":"task.finished","taskId":"8221aea2-0faf-4453-b8b1-68c74285d3a7","state":"succeeded"}
-{"event":"task.finished","taskId":"b6e5df47-4eda-48f4-b83c-d82da4ef800e","state":"succeeded"}
-{"event":"task.finished","taskId":"faac4ba0-29ac-4d97-b06e-f4cfe7b18bdb","state":"succeeded"}
-{"event":"task.finished","taskId":"2ec65189-b8dd-4416-b1d9-a4af11678613","state":"succeeded"}
-{"event":"task.finished","taskId":"eea82b29-e4ac-4cef-852a-00b5348aad55","state":"succeeded"}
-{"event":"task.finished","taskId":"cfb63a21-698c-44e4-9b3c-62da62e342a3","state":"succeeded"}
+✔ M01/B01: copied image bytes, dimensions, format and digest match (41.514042ms)
+✔ M03: byte and aggregate budgets reject input and remove partial directories (15.696416ms)
+✔ M05: renamed HTML/SVG/executable are not accepted as images (26.016792ms)
+✔ M06: per-image and aggregate pixel limits are enforced (9.147625ms)
+✔ M06: truncated payload must pass full decode, not merely metadata (7.5445ms)
+✔ M07/M08: missing files, symlinks, escaped references and tampering fail (10.813084ms)
+✔ M09/R01: active media survives TTL; inactive stale/partial files are removed (5.391917ms)
+✔ media: cancellation and count limit are checked before file I/O (2.3235ms)
+✔ M06: valid animated WebP is rejected before Agent input (6.343583ms)
+{"event":"task.finished","taskId":"eab499bd-e2ed-4101-82ba-4198ff50bbca","state":"succeeded"}
+{"event":"task.finished","taskId":"95f925f7-e1ef-478f-9924-e96c9bcbd9e6","state":"succeeded"}
+{"event":"task.finished","taskId":"4fd3f7e6-d29d-42de-9a2f-474d997d1c86","state":"succeeded"}
+{"event":"task.finished","taskId":"aff9e64e-371d-472e-98fb-595778a519e5","state":"succeeded"}
+{"event":"task.finished","taskId":"00d67aa4-166b-4ed2-b017-647cd5c52fcb","state":"succeeded"}
+{"event":"task.finished","taskId":"469b944d-f8df-4eb2-b7ce-17e14274bdbf","state":"succeeded"}
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ BR-01/02: default and topic/reference changes keep physical workspace (36.333291ms)
-✔ BR-03/13: aliases and A-B-A recover original bound session instead of latest native (29.481417ms)
-{"event":"task.finished","taskId":"6fc1c2bc-5744-40ef-b28b-fd1b321c7aeb","state":"succeeded"}
-✔ BR-04: authorized discovery reads bounded purpose metadata and inherits profile (26.0405ms)
-{"event":"task.finished","taskId":"d9b2e049-ec7e-4128-8efa-b29027943689","state":"succeeded"}
-✔ BR-05: search budget returns partial and resumable queue, never false absence (34.117042ms)
-{"event":"task.finished","taskId":"49b9ff17-b9ce-496e-9e10-66506720977a","state":"succeeded"}
-{"event":"task.finished","taskId":"dda9d4b6-68a7-42fc-a84f-04d91cb32115","state":"succeeded"}
-{"event":"task.finished","taskId":"cc8f86c3-155d-49b7-bde1-bda2d467fdfe","state":"succeeded"}
-{"event":"task.finished","taskId":"7a8099ab-c010-4e2c-aa00-4d862c392ca4","state":"succeeded"}
-{"event":"task.finished","taskId":"156c4bc3-f00b-4c93-89ea-06b9f4dde5cb","state":"succeeded"}
-{"event":"task.finished","taskId":"c7e0a05d-8279-46d6-b168-c6dbb7691255","state":"succeeded"}
-{"event":"task.finished","taskId":"a4d9ef4b-b001-4639-9d81-5908ba1413a3","state":"succeeded"}
-✔ BR-06/07: ambiguous and absent switches leave binding unchanged and run no worker (29.106042ms)
-✔ BR-08: alias cannot bypass symlink escape, revoke or physical replacement (11.183916ms)
-✔ BR-09: query/read other workspace does not switch active workspace (23.422666ms)
-✔ BR-10: trusted timestamp is inclusive at 24h and rejects future/unknown (0.166167ms)
-✔ BR-10/11: expired reply creates new session; controls and delivery never refresh time (21.110917ms)
-✔ BR-12: explicit new is idempotent; rerun keeps session and original prompt (25.87875ms)
-{"event":"task.finished","taskId":"ae0f762e-e879-4e46-92ef-5f4b761fd2d6","state":"succeeded"}
-{"event":"task.finished","taskId":"1bc623e9-fb2c-4321-b5d9-267dcd0f3bcb","state":"succeeded"}
-✔ BR-14/19: active no-answer session is reused; queued workspace stays fixed across switches (23.680334ms)
-✔ BR-15: native history error is not empty history and never dispatches a task (10.308209ms)
-✔ BR-16: historical search covers older than ten; ordinal uses saved snapshot (52.455458ms)
-{"event":"task.finished","taskId":"f9b6a0b5-dc5f-4cc5-b808-83d0e0fc7d69","state":"succeeded"}
-✔ BR-17: explicitly selected expired history resumes next work without TTL override (20.528292ms)
-{"event":"task.finished","taskId":"c655c666-c9bc-4b69-bf3a-0b260681ce26","state":"succeeded"}
-{"event":"task.finished","taskId":"d2e3f988-d3e0-492e-bc09-9618ed01e8e2","state":"succeeded"}
-✔ BR-18: reject cross-conversation snapshot and already owned native history (19.066083ms)
-✔ BR-20: fresh session cannot bypass taint; explicit new does not cancel running work (12.637ms)
-✔ BR-21: malicious metadata cannot grant a profile or expand roots (8.926625ms)
-✔ BR-22: explicit alias corrections are versioned; missing alias invalidates instead of reuse (15.571167ms)
-{"event":"task.finished","taskId":"4ff46a68-d6ed-4e6b-935a-a6d1520a6765","state":"succeeded"}
-{"event":"task.finished","taskId":"375bcbe9-ba64-4559-83a6-9b625eafadf2","state":"succeeded"}
-✔ BR-19: production entry, offline child, restart preserves directory and session (116.329458ms)
-✔ BR-19: queued profile mutation fails before dispatch; same physical directory locks across roots (12.807084ms)
-✔ native Pi v3 does not equate final message timestamp with agent_settled (12.281792ms)
-✔ routing parser distinguishes references, retry, controls and validates model schema (13.956959ms)
-✔ BR-06: reply to directory clarification selects candidate without executing the reply (18.745459ms)
-✔ BR-05: persisted directory continuation reaches entries beyond the first budget (125.576667ms)
-✔ BR-16: native discovery continuation and result pages are bound to conversation (211.889958ms)
-{"event":"task.finished","taskId":"0b32a973-b190-4472-8d2b-6cbe657417f2","state":"cancelled"}
-✔ BR-12/19: explicit new during active work queues separately; cancel follows conversation after switch (26.391334ms)
-{"event":"task.finished","taskId":"1053497b-0c94-439c-b00b-cb4a111c87b0","state":"succeeded"}
-✔ BR-07: discovered directory without execution profile blocks without changing active binding (14.071875ms)
-✔ BR-08/18: revoke root, foreign profile and changed identity never reuse a cached directory/session (14.551792ms)
-✔ BR-15: injected history timeout and partial do not silently create an Agent job (10.533667ms)
-✔ BR-19: transaction failure rolls back both directory binding and message reservation (8.633375ms)
-✔ router model transport bounds response, forbids redirects and preserves operator model (1.802209ms)
-{"event":"task.finished","taskId":"0262dfdc-f06a-496f-8df4-e7077623beba","state":"succeeded"}
-{"event":"task.finished","taskId":"bf5e1a58-dcb7-4d58-ac6b-7d6ff281dd87","state":"succeeded"}
-{"event":"task.finished","taskId":"19398577-4668-4cbd-b105-9218e25f24a4","state":"succeeded"}
-{"event":"task.finished","taskId":"a534893c-f754-4e5d-8eda-1ef0dd86b0ad","state":"succeeded"}
-✔ BR-19: production mixed Codex/Pi profiles dispatch correct backend without session migration (139.374292ms)
-✔ BR-03/18: colloquial alias works; historical snapshot cannot cross changed profile (18.729625ms)
-✔ BR-11: progress and pending/sent/unknown deliveries never change successful response time (11.541583ms)
-✔ BR-09: reading snapshot for another directory leaves current directory unchanged (16.99ms)
-{"event":"task.finished","taskId":"c554785e-2e35-49ba-8703-b2524af8c222","state":"succeeded"}
-{"event":"task.finished","taskId":"410627bb-6476-4ede-b22f-51a6480991a7","state":"succeeded"}
-✔ BR-15: missing bound native file is confirmed before prompt and explicitly reported (29.006042ms)
+✔ BR-01/02: default and topic/reference changes keep physical workspace (36.272875ms)
+✔ BR-03/13: aliases and A-B-A recover original bound session instead of latest native (27.913667ms)
+{"event":"task.finished","taskId":"9eeb35ba-bd2d-4ec3-aa69-3b91d375b33e","state":"succeeded"}
+✔ BR-04: authorized discovery reads bounded purpose metadata and inherits profile (22.358583ms)
+{"event":"task.finished","taskId":"96dff681-94b2-4540-8f48-21cf4df2b5e1","state":"succeeded"}
+✔ BR-05: search budget returns partial and resumable queue, never false absence (14.413083ms)
+{"event":"task.finished","taskId":"1b8fed5c-1d4f-4c95-9926-3bcd0b069f2c","state":"succeeded"}
+{"event":"task.finished","taskId":"acb61fab-f31d-4181-9e12-96191ee22bdd","state":"succeeded"}
+{"event":"task.finished","taskId":"2684c7bb-afc1-4f65-b897-57fba84e2be2","state":"succeeded"}
+{"event":"task.finished","taskId":"2424559b-054b-4b38-8216-234406e25fcd","state":"succeeded"}
+{"event":"task.finished","taskId":"fcddec5d-b9a3-4f68-852d-9e2f6be5644d","state":"succeeded"}
+{"event":"task.finished","taskId":"c624dd32-c893-42d3-ad01-d431f7c398c2","state":"succeeded"}
+{"event":"task.finished","taskId":"6888df78-7a28-4a48-89a9-58aa24c8b4c7","state":"succeeded"}
+✔ BR-06/07: ambiguous and absent switches leave binding unchanged and run no worker (24.931166ms)
+✔ BR-08: alias cannot bypass symlink escape, revoke or physical replacement (10.295875ms)
+✔ BR-09: query/read other workspace does not switch active workspace (26.983334ms)
+✔ BR-10: trusted timestamp is inclusive at 24h and rejects future/unknown (0.071083ms)
+✔ BR-10/11: expired reply creates new session; controls and delivery never refresh time (22.434375ms)
+✔ BR-12: explicit new is idempotent; rerun keeps session and original prompt (21.697084ms)
+{"event":"task.finished","taskId":"e5357531-5670-427a-9165-7dd05ade295b","state":"succeeded"}
+{"event":"task.finished","taskId":"53e0a8d3-3b9c-47f8-a19c-8775b667e549","state":"succeeded"}
+✔ BR-14/19: active no-answer session is reused; queued workspace stays fixed across switches (28.036417ms)
+✔ BR-15: native history error is not empty history and never dispatches a task (11.054042ms)
+✔ BR-16: historical search covers older than ten; ordinal uses saved snapshot (26.693792ms)
+{"event":"task.finished","taskId":"82afe961-ac6a-4696-a3b4-bec55dcf47b3","state":"succeeded"}
+✔ BR-17: explicitly selected expired history resumes next work without TTL override (19.153708ms)
+{"event":"task.finished","taskId":"3ac105f8-3c3e-4512-a16d-d37f37f91003","state":"succeeded"}
+{"event":"task.finished","taskId":"6cd37bb2-630d-4e6d-942b-80f160f7d052","state":"succeeded"}
+✔ BR-18: reject cross-conversation snapshot and already owned native history (13.81225ms)
+✔ BR-20: fresh session cannot bypass taint; explicit new does not cancel running work (11.466625ms)
+✔ BR-21: malicious metadata cannot grant a profile or expand roots (8.294708ms)
+✔ BR-22: explicit alias corrections are versioned; missing alias invalidates instead of reuse (13.900291ms)
+{"event":"task.finished","taskId":"5eb568d3-3833-4a36-a98c-e758bb09e24e","state":"succeeded"}
+{"event":"task.finished","taskId":"9a8f1190-9315-4be0-8f83-973d21cf6b4f","state":"succeeded"}
+✔ BR-19: production entry, offline child, restart preserves directory and session (102.354917ms)
+✔ BR-19: queued profile mutation fails before dispatch; same physical directory locks across roots (12.139042ms)
+✔ native Pi v3 does not equate final message timestamp with agent_settled (8.329042ms)
+✔ routing parser distinguishes references, retry, controls and validates model schema (11.49975ms)
+✔ BR-06: reply to directory clarification selects candidate without executing the reply (17.376083ms)
+✔ BR-05: persisted directory continuation reaches entries beyond the first budget (112.4235ms)
+✔ BR-16: native discovery continuation and result pages are bound to conversation (71.448084ms)
+{"event":"task.finished","taskId":"48a239f3-2720-4de5-80a1-132c6d5ff305","state":"cancelled"}
+✔ BR-12/19: explicit new during active work queues separately; cancel follows conversation after switch (25.843875ms)
+{"event":"task.finished","taskId":"1f371fde-5b1d-4a2c-ad9c-c0747deaf7b0","state":"succeeded"}
+✔ BR-07: discovered directory without execution profile blocks without changing active binding (10.432458ms)
+✔ BR-08/18: revoke root, foreign profile and changed identity never reuse a cached directory/session (10.932792ms)
+✔ BR-15: injected history timeout and partial do not silently create an Agent job (8.609417ms)
+✔ BR-19: transaction failure rolls back both directory binding and message reservation (8.567417ms)
+✔ router model transport bounds response, forbids redirects and preserves operator model (0.470459ms)
+{"event":"task.finished","taskId":"01b76439-fe7c-4472-83b0-5bc904b98fb2","state":"succeeded"}
+{"event":"task.finished","taskId":"c4fa56b5-9861-47d1-bca4-46b789879d52","state":"succeeded"}
+{"event":"task.finished","taskId":"23665191-3c9e-460d-8e3d-0467fc36cf11","state":"succeeded"}
+{"event":"task.finished","taskId":"2e4a9aec-7646-4e92-adfa-12e8e4c7556a","state":"succeeded"}
+✔ BR-19: production mixed Codex/Pi profiles dispatch correct backend without session migration (123.581084ms)
+✔ BR-03/18: colloquial alias works; historical snapshot cannot cross changed profile (20.162959ms)
+✔ BR-11: progress and pending/sent/unknown deliveries never change successful response time (11.16025ms)
+✔ BR-09: reading snapshot for another directory leaves current directory unchanged (19.570667ms)
+{"event":"task.finished","taskId":"7f1b8229-3e48-448b-baff-513064572614","state":"succeeded"}
+{"event":"task.finished","taskId":"9265d4c5-b960-434e-8f58-a568593e990d","state":"succeeded"}
+✔ BR-15: missing bound native file is confirmed before prompt and explicitly reported (16.462833ms)
+✔ H01: legacy no-cwd rollout and corrupt foreign body cannot poison scoped history (8.429583ms)
+✔ H02: native index scopes first; stale paths are visible issues, never empty success (10.632416ms)
+✔ H03: streaming history accepts >8 MiB, UTF-8 and excludes discarded/nonfinal content (86.227917ms)
+✔ H04: active and partial-tail history is readable but cannot be resumed (14.63575ms)
+✔ H05: malformed matching history yields an incomplete list and blocks automatic new work (10.970292ms)
+✔ I01: configured Agent takes priority over natural-language rules; slash commands remain direct (59.355917ms)
+✔ I02: model failure does not fall back to executing ordinary text; no tool results accepted (58.549625ms)
+✔ I03: host rejects model path escalation and validates codex interpreter configuration (49.224667ms)
+✔ I04: HTTP reasoning uses configured high and does not send unsupported temperature (0.404833ms)
+✔ I05: shutdown cancels in-flight routing Agent and never dispatches queued work (30.723333ms)
+{"event":"task.finished","taskId":"a7cda029-94eb-4435-ae61-15e9ece667f9","state":"succeeded"}
+✔ H06: bound session becoming active is not treated as missing and silently replaced (14.947292ms)
+✔ H07: model and reasoning changes keep history readable without authorizing profile resume (7.98775ms)
 (node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
-✔ schema: old channel database is refused without changing its version (6.404167ms)
-✔ state: workspace identity and backend home cannot silently change (5.00975ms)
-✔ Q01: duplicate IDs are durable; ID reuse with different content/session is rejected (6.511917ms)
-✔ Q02/Q03: one active task; preparing blocks only later tasks in its own conversation (8.519875ms)
-✔ Q06: result/cancel ownership never crosses local conversation boundaries (6.738209ms)
-✔ Q07: cancellation/success race has one terminal status and one outbox set (7.438708ms)
-✔ R04: outbox insertion failure rolls back result and terminal status (8.216833ms)
-✔ D03/D05: disconnected delivery remains pending; later success sends exactly once (6.976375ms)
-✔ D04: ACK/output uncertainty is never automatically retried (6.176792ms)
-✔ D06: retryable failures are finite; permanent failures are never retried (16.465459ms)
-✔ D07: bounded auto-parts retain the complete bounded result for explicit retrieval (5.991208ms)
-ℹ tests 147
+✔ schema: old channel database is refused without changing its version (6.085167ms)
+✔ state: workspace identity and backend home cannot silently change (5.329125ms)
+✔ Q01: duplicate IDs are durable; ID reuse with different content/session is rejected (6.798542ms)
+✔ Q02/Q03: one active task; preparing blocks only later tasks in its own conversation (8.836875ms)
+✔ Q06: result/cancel ownership never crosses local conversation boundaries (6.087917ms)
+✔ Q07: cancellation/success race has one terminal status and one outbox set (6.034584ms)
+✔ R04: outbox insertion failure rolls back result and terminal status (7.339625ms)
+✔ D03/D05: disconnected delivery remains pending; later success sends exactly once (8.307ms)
+✔ D04: ACK/output uncertainty is never automatically retried (6.558625ms)
+✔ D06: retryable failures are finite; permanent failures are never retried (12.194042ms)
+✔ D07: bounded auto-parts retain the complete bounded result for explicit retrieval (5.21975ms)
+ℹ tests 159
 ℹ suites 0
-ℹ pass 147
+ℹ pass 159
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 28597.598125
+ℹ duration_ms 28552.816917

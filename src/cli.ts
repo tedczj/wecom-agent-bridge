@@ -58,9 +58,10 @@ function inspect(c: Config, task?: string): unknown {
 export function review(c: Config, acknowledged: boolean): number {
   invariant(acknowledged, 'REVIEW_ACK_REQUIRED'); preparePaths(c);
   clearStaleLock(c.stateRoot);
-  const unlock = acquireLock(c.stateRoot), marker = path.join(c.stateRoot, 'agent-process.json');
+  const unlock = acquireLock(c.stateRoot);
+  const routerRoot=path.join(c.stateRoot,'routing-agent');
   try {
-    if (existsSync(marker)) {
+    for(const marker of [path.join(c.stateRoot,'agent-process.json'),path.join(routerRoot,'state','agent-process.json')]) if (existsSync(marker)) {
       invariant(!lstatSync(marker).isSymbolicLink(), 'UNSAFE_PROCESS_MARKER');
       const data = JSON.parse(readFileSync(marker, 'utf8'));
       invariant(Number.isSafeInteger(data.pid) && data.pid > 0 && !processAlive(data.pid), 'AGENT_STILL_RUNNING');
@@ -70,6 +71,7 @@ export function review(c: Config, acknowledged: boolean): number {
       invariant(!groupAlive, 'AGENT_STILL_RUNNING');
       rmSync(marker);
     }
+    if(existsSync(routerRoot))clearStaleLock(routerRoot);
     const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c);
     try {
       store.recover();

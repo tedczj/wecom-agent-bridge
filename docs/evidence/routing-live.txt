@@ -1,0 +1,9 @@
+
+> local-agent-bridge@0.2.0 smoke:routing
+> npm run build --silent && node dist/scripts/smoke-routing.js --live --config config.local.json
+
+(node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+{"requestedModel":"gpt-5.6-terra","requestedReasoning":"high","intent":"history-query","directory":"doc-ocr-service","historySource":"native-index","historyEntries":7,"activeEntries":1,"historyIssues":{},"historyPages":1,"workerInvoked":false,"weixinMessageSent":false,"finalServerModel":"not-verified"}
+
+Exit code: 0. Counts only; no session content or model answer published.

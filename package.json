@@ -17,7 +17,8 @@
     "check": "npm run typecheck && npm test",
     "bridge": "npm run build --silent && node dist/src/cli.js",
     "smoke:codex": "npm run build --silent && node dist/scripts/smoke-agent.js codex",
-    "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi"
+    "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi",
+    "smoke:routing": "npm run build --silent && node dist/scripts/smoke-routing.js"
   },
   "dependencies": {
     "qrcode-terminal": "0.12.0",

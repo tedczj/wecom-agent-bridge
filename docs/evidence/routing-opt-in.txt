@@ -1,0 +1,9 @@
+
+> local-agent-bridge@0.2.0 smoke:routing
+> npm run build --silent && node dist/scripts/smoke-routing.js
+
+{"event":"routing.smoke_failed","code":"LIVE_OPT_IN_REQUIRED"}
+(node:<PID>) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+Exit code: 1 (expected without --live).

@@ -47,6 +47,11 @@ else {
     }
   } else if (mode === 'ack-only') { /* exit without terminal event */ }
   else if (mode === 'fail') { emit({type:'turn.failed',error:{message:'FAKE_SECRET_NEVER_LOG_ME'}}); process.exitCode = 1; }
+  else if(mode==='router') {
+    const result={action:process.env.FAKE_ROUTER_ACTION??'list',query:process.env.FAKE_ROUTER_QUERY??'second',selector:null,alias:null,execute:null};
+    emit({type:'item.completed',item:{id:'answer',type:'agent_message',text:JSON.stringify(result)}});
+    emit({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}});
+  }
   else {
     emit({type:'item.completed',item:{id:'reasoning',type:'reasoning',text:'PRIVATE_CHAIN_NOT_A_RESULT'}});
     emit({type:'item.completed',item:{id:'tool',type:'command_execution',command:'FAKE_SECRET_NEVER_LOG_ME',aggregated_output:'TOOL_OUTPUT_NOT_A_RESULT',status:'completed',exit_code:0}});

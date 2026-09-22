@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, realpathSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Writable } from 'node:stream';
@@ -16,7 +16,14 @@ export function setup(t: TestContext, backend: 'codex' | 'pi' = 'codex', mode = 
       isolation:backend === 'codex' ? 'native' : 'external',startupTimeoutMs:1000,taskTimeoutMs:3000,cancelGraceMs:150,killGraceMs:80}});
   preparePaths(c);
   const cleanups: Array<() => void | Promise<void>> = [];
-  t.after(async () => { for (const fn of cleanups.reverse()) await fn(); rmSync(root,{recursive:true,force:true}); });
+  t.after(async () => { for (const fn of cleanups.reverse()) await fn();
+    // Test fixtures may deliberately interrupt a backend. Remove only this fixture's
+    // private lock after its child cleanup, so recycled temp inodes cannot affect another test.
+    const locks=path.join(realpathSync(os.tmpdir()),`local-agent-bridge-locks-${process.getuid?.() ?? 'user'}`);
+    if(existsSync(locks))for(const name of readdirSync(locks)) {
+      const file=path.join(locks,name);try {if(JSON.parse(readFileSync(file,'utf8')).stateRoot===c.stateRoot)rmSync(file);}catch{}
+    }
+    rmSync(root,{recursive:true,force:true}); });
   const store = () => { const s = new Store(path.join(c.stateRoot,'bridge.sqlite'),c); cleanups.push(()=>s.close()); return s; };
   return {root,c,workspace,home,store,cleanups};
 }

@@ -20,6 +20,7 @@ export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef): st
     '--config', 'approval_policy="never"', '--config', `sandbox_workspace_write.network_access=${c.codex.networkAccess}`,
     '--config', 'web_search="disabled"'];
   if (c.codex.model) args.push('--model', c.codex.model);
+  if (c.codex.reasoning) args.push('--config', `model_reasoning_effort="${c.codex.reasoning}"`);
   if (saved?.kind === 'codex') args.push('resume', saved.threadId);
   for (const image of images) args.push('--image', image.localPath);
   args.push('-'); // Prompt through stdin, never through a shell or the process argument list.

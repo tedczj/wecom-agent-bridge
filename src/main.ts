@@ -41,7 +41,9 @@ export async function openService(c: Config, output: Writable, transport?: Trans
     store.db.prepare("INSERT OR IGNORE INTO metadata(key,value) VALUES ('transport',?)").run(c.transport);
     await transport?.initialize(store);
     const media = new MediaStore(c), channel = new LocalChannel(output), backend = createBackend(c, media);
-    bridge = new Bridge(c, `${c.transport}:${c.backend}`, store, transport?.channel ?? channel, backend, media, transport?.normalize);
+    let channelId=`${c.transport}:${c.backend}`;
+    if(c.routing) { channelId=store.value<string>('routing:channel') ?? channelId; store.put('routing:channel',channelId); }
+    bridge = new Bridge(c, channelId, store, transport?.channel ?? channel, backend, media, transport?.normalize, target => createBackend(target, media));
     const outbox = new OutboxPump(store, transport?.channel ?? channel, c.reply);
     bridge.start(); await media.gc(store.activeMedia());
     tick = setInterval(() => void outbox.tick().catch(() => log('outbox.error', {code:'OUTBOX_FAILURE'})), 100);

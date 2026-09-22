@@ -1,3 +1,5 @@
+import { Router, type Plan } from './routing/router.ts';
+import { workspaceLock } from './routing/lock.ts';
 import type { Config } from './config.ts';
 import type { AgentBackend, Channel, Job, MediaProvider, NormalizedInput, SessionRef } from './types.ts';
 import { Store } from './store.ts';
@@ -7,26 +9,50 @@ import { resultParts } from './reply.ts';
 import { deadline } from './async.ts';
 export class Bridge {
   private stopped = true;
+  private intake: Promise<unknown> = Promise.resolve();
+  private router?: Router;
+  private executingBackend?: AgentBackend;
   private worker?: Promise<void>;
   private wakeAgain = false;
   private active?: {id: string; controller: AbortController};
   private preparing = new Map<string, {controller: AbortController; promise: Promise<void>}>();
-  constructor(private c: Config, private channelId: string, readonly store: Store, private channel: Channel, private backend: AgentBackend, private media: MediaProvider, private normalizer: typeof normalize = normalize) {}
+  constructor(private c: Config, private channelId: string, readonly store: Store, private channel: Channel, private backend: AgentBackend, private media: MediaProvider, private normalizer: typeof normalize = normalize, private backendFactory?: (c: Config) => AgentBackend) { if (c.routing) this.router = new Router(c,store); }
   start(): void { this.store.recover(); this.stopped = false; this.kick(); }
-  async accept(frame: unknown): Promise<{taskId?: string; duplicate?: boolean; rejected?: string}> {
+  accept(frame: unknown): Promise<{taskId?: string; duplicate?: boolean; rejected?: string}> {
+    const run = this.intake.then(() => this.acceptOrdered(frame));
+    this.intake = run.catch(() => {}); return run;
+  }
+  private async acceptOrdered(frame: unknown): Promise<{taskId?: string; duplicate?: boolean; rejected?: string}> {
     if (this.stopped) return { rejected: 'STOPPING' };
     let incoming;
     try { incoming = this.normalizer(frame, this.c, this.channelId); }
     catch (e) { const code = errorCode(e, 'INVALID_MESSAGE'); log('input.rejected', { code }); return { rejected: code }; }
-    const control = incoming.text.startsWith('/');
-    let reserved;
-    try { reserved = this.store.reserve(incoming, control ? 'command' : 'agent'); }
+    let control = incoming.text.startsWith('/');
+    let reserved, plan: Plan | undefined, routingError: string | undefined;
+    try {
+      const duplicate=this.store.duplicate(incoming); if(duplicate)return {taskId:duplicate.task_id,duplicate:true};
+      if(this.router) {
+        try { plan=await this.router.plan(incoming); control=control || plan.control !== undefined || plan.command !== undefined; }
+        catch(e) { routingError=errorCode(e,'ROUTING_UNAVAILABLE');control=true; }
+        if (control && incoming.media.length) { routingError='COMMAND_IMAGES'; plan=undefined; }
+      }
+      if(this.stopped)return {rejected:'STOPPING'};
+      reserved=this.store.atomic(()=>{
+        const result=this.store.reserve(incoming,control?'command':'agent',plan?.selection);
+        if(!result.duplicate) {
+          if(!routingError)plan?.commit();
+          if(routingError || plan?.control !== undefined) this.store.complete(result.job.task_id,routingError?'failed':'succeeded',routingError?`路由未执行（${routingError}），原目录保持，请补充目录或检查配置。`:plan!.control!,routingError);
+        }
+        return result;
+      });
+    }
     catch (e) { const code = errorCode(e); this.receipt(incoming.reqId, `未接收任务（${code}），请在本地检查。`); return { rejected: code }; }
     const { job, duplicate } = reserved;
     if (duplicate) return { taskId: job.task_id, duplicate: true };
     if (control) {
+      if (routingError || plan?.control !== undefined) { this.kick(); return {taskId:job.task_id,duplicate:false}; }
       this.store.atomic(() => {
-        try { const answer = this.command(job, incoming.text); this.store.complete(job.task_id, 'succeeded', answer.text, undefined, ['queued'], answer.parts); }
+        try { const answer = this.command(job, plan?.command ?? incoming.text); this.store.complete(job.task_id, 'succeeded', answer.text, undefined, ['queued'], answer.parts); }
         catch (e) { this.store.complete(job.task_id, 'failed', `命令未执行（${errorCode(e)}）。`, errorCode(e)); }
       });
       if (this.active && this.store.get(this.active.id).status === 'cancel_requested') this.active.controller.abort();
@@ -49,7 +75,7 @@ export class Bridge {
   }
   private command(owner: Job, text: string): {text: string; parts?: string[]} {
     const [cmd, ...args] = text.trim().split(/\s+/);
-    if (cmd === '/help') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `工作目录别名：${this.c.workspace.id}\n/help /status /new\n/cancel [taskId]\n/result taskId [part]\n取消和失败都可能已有部分修改。`}; }
+    if (cmd === '/help') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `工作目录别名：${JSON.parse(owner.input_json).workspaceId}\n/help /status /new\n/cancel [taskId]\n/result taskId [part]${this.router?'\n/route 目录 /sessions [目录] /find 关键词 /read 序号 /resume 序号 /alias 简称 /more':''}\n取消和失败都可能已有部分修改。`}; }
     if (cmd === '/status') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: JSON.stringify(this.store.summary(owner), null, 2)}; }
     if (cmd === '/new') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `已创建新会话 generation=${this.store.newGeneration(owner)}；历史结果保留。`}; }
     if (cmd === '/cancel') {
@@ -78,22 +104,37 @@ export class Bridge {
   private async execute(job: Job): Promise<void> {
     const controller = new AbortController(); this.active = {id: job.task_id, controller};
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; this.store.cancel(job.task_id); controller.abort(); }, this.c.agent.taskTimeoutMs);
+    let releaseWorkspace: (() => void) | undefined;
+    let timer = setTimeout(() => { timedOut = true; this.store.cancel(job.task_id); controller.abort(); }, this.c.agent.taskTimeoutMs);
     try {
       const input: NormalizedInput = JSON.parse(job.input_json), session = this.store.session(job.session_key);
       invariant(session.state !== 'tainted', 'SESSION_TAINTED'); await this.media.validate(input.images);
-      const result = await this.backend.run(input, session.agent_ref_json ? JSON.parse(session.agent_ref_json) as SessionRef : undefined, {
+      let executionConfig=this.c;
+      if(input.routing) {
+        invariant(this.router,'ROUTING_CONFIG_REQUIRED');
+        const target=this.router.catalog.target(input.routing.directory);
+        invariant(target.digest===input.routing.digest,'PROFILE_CHANGED'); executionConfig=target.config;
+        invariant(this.backendFactory,'ROUTING_BACKEND_FACTORY_REQUIRED');
+      } else invariant(!this.router,'LEGACY_QUEUED_ROUTING_REVIEW_REQUIRED');
+      clearTimeout(timer); timer=setTimeout(()=>{timedOut=true;this.store.cancel(job.task_id);controller.abort();},executionConfig.agent.taskTimeoutMs);
+      releaseWorkspace=workspaceLock(executionConfig.workspace.path,executionConfig.stateRoot);
+      this.executingBackend=input.routing ? this.backendFactory!(executionConfig) : this.backend;
+      const result = await this.executingBackend.run(input, session.agent_ref_json ? JSON.parse(session.agent_ref_json) as SessionRef : undefined, {
         persistSession: async ref => this.store.persistSession(job.session_key, ref), progress: () => {},
       }, controller.signal);
       const status = result.outcome === 'interrupted' ? 'interrupted' : timedOut ? 'timed_out' : result.outcome === 'success' ? 'succeeded' : result.outcome === 'cancelled' ? 'cancelled' : 'failed';
-      this.store.complete(job.task_id, status, timedOut && status !== 'interrupted' ? '任务超时，执行已停止；可能已有部分修改，请检查工作目录。' : result.finalText, timedOut ? 'TASK_TIMEOUT' : result.errorCode);
+      this.store.complete(job.task_id, status, timedOut && status !== 'interrupted' ? '任务超时，执行已停止；可能已有部分修改，请检查工作目录。' : (input.routing?.reason==='missing-before-prompt' ? '原会话在提交前确认已不存在，已新建会话。\n' : '') + result.finalText, timedOut ? 'TASK_TIMEOUT' : result.errorCode);
       log('task.finished', {taskId:job.task_id, state:this.store.get(job.task_id).status});
     } catch (e) {
       const unknown = e instanceof BackendStateUnknown;
       this.store.complete(job.task_id, unknown ? 'interrupted' : 'failed', unknown ? '无法确认执行已停止，工作目录已阻塞。请在本地检查进程与 git diff。' : `任务未完成（${errorCode(e)}），未自动重跑。`, errorCode(e));
-    } finally { clearTimeout(timer); this.active = undefined; }
+    } finally {
+      clearTimeout(timer); this.active = undefined; this.executingBackend=undefined;
+      if (releaseWorkspace && this.store.get(job.task_id).status !== 'interrupted') releaseWorkspace();
+    }
   }
   async idle(): Promise<void> {
+    await this.intake;
     while (this.preparing.size || this.worker) { await Promise.all([...this.preparing.values()].map(p => p.promise)); if (this.worker) await this.worker; }
   }
   async stop(): Promise<void> {
@@ -103,7 +144,8 @@ export class Bridge {
     const grace = this.c.agent.cancelGraceMs + this.c.agent.killGraceMs * 3 + 1000;
     try {
       await deadline(Promise.all([...this.preparing.values()].map(p => p.promise).concat(this.worker ? [this.worker] : [])), grace, 'SHUTDOWN_TIMEOUT');
-      await deadline(this.backend.stop(), grace, 'SHUTDOWN_TIMEOUT');
+      await this.intake;
+      await deadline((this.executingBackend ?? this.backend).stop(), grace, 'SHUTDOWN_TIMEOUT');
     } catch (e) {
       if (this.active) this.store.complete(this.active.id, 'interrupted', '关闭时无法确认执行已停止，请在本地检查。', 'SHUTDOWN_UNKNOWN'); throw e;
     }

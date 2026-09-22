@@ -4,7 +4,7 @@
 
 Both transports use the same Bridge, SQLite Store, MediaStore and durable outbox. Local frames are normalized against the configured actor; Weixin frames are checked against the QR-paired bot/user before they can reach the Bridge. Transport and account identity are pinned before worker startup. v1 state is rejected, and existing tasks are not translated across transports.
 
-Execution completion and message delivery are separate. An uncertain Agent stop blocks future work; an uncertain send becomes `unknown` and is not automatically repeated. `/result` reads saved output without invoking an Agent. Each stateRoot owns a single worker and lock; there is no cross-stateRoot filesystem mutex.
+Execution completion and message delivery are separate. An uncertain Agent stop blocks future work; an uncertain send becomes `unknown` and is not automatically repeated. `/result` reads saved output without invoking an Agent. Each stateRoot owns a single worker and instance lock; execution additionally uses a canonical workspace device/inode lock shared by same-user bridge instances across state roots. An uncertain execution retains the lock until operator review.
 
 ## Personal Weixin
 
@@ -31,3 +31,15 @@ Pi uses the installed RPC executable and waits for agent_settled. Extensions can
 - Adapter code was independently written; upstream implementation source was not copied. Dependency licenses and this repository's LICENSE remain in force.
 
 Offline tests launch deterministic child doubles; they do not establish real model quality, visual correctness or OS sandbox enforcement. Actual evidence and its limits are recorded in [verification.md](verification.md).
+
+## Directory routing implementation
+
+Routing is opt-in through operator roots/profiles/workspaces. The implementation uses one Store and one worker rather than mutable per-request global backend configuration: each job stores a directory identity and configuration digest, and dispatch constructs an immutable backend from the validated target profile. Media and outbox remain shared and retain their original budgets and delivery semantics. Schema v3 adds nullable successful-response timestamps and a scoped routing state table via an atomic v2 migration.
+
+Natural controls use bounded deterministic forms, with an optional HTTPS JSON classifier for other expressions and ambiguous candidate descriptions. The classifier gets no execution capability. Host code performs directory traversal, native history reading, state selection and final authorization. No production fake backend is introduced. Local routing identity is pinned separately from the selected backend; startup validates pending routed profiles before replacing an instance.
+
+Directory pages retain BFS queues and accumulated candidates in private SQLite state. History pages retain pending files and filtered entries. Snapshot/continuation lifetime is 15 minutes, scoped to conversation and configuration digest; matching list results also paginate in tens. Directory metadata reads are capped at 16 KiB/file (8 KiB combined description); native files at 8 MiB/file, 32 MiB/page, 100 entries/page and a cooperative 2-second budget. Directory pages allow 200 entries and depth windows of eight, with cooperative time checks. Very wide trees (>10,000 pending entries) or unsupported files fail explicitly rather than claim absence. Local filesystem syscalls are not an OS-enforced hard deadline.
+
+Native format source inspected locally for this change: OpenAI Codex revision `50d77959bf927293c4b5ddcca81d05331ae582ea`, `codex-rs/protocol/src/protocol.rs` (session_meta, task_started/task_complete aliases, final message) and `openai_models.rs` (reasoning effort); Pi revision `95fbc04997eaee961eb673fa7923e9220609ebd5`, `packages/coding-agent/src/core/session-manager.ts` (v3 header/parentId branch). Source inspection is separate from live compatibility verification. Pi timestamps remain unknown unless this bridge observed a complete successful turn.
+
+Routing aliases record explicit/selected provenance and invalidate on path identity or authorization changes. This is the directory-memory subset; the larger generation/summarization/deletion lifecycle in BRIDGE_MEMORY_DESIGN.md remains a separate design. The untracked external architecture report is not an implementation authority for this patch.

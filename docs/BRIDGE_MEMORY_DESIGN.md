@@ -356,4 +356,4 @@ src/session-catalog.ts              Codex/Pi原生历史适配统一契约
 
 ## 14. 验证与发布说明
 
-本次提交仅有规则、调研和设计文档。未实现本节模块；未运行新增测试、真实模型benchmark、微信端到端、macOS或OS隔离验证。后续编码必须更新 `DESIGN.md`、`IMPLEMENTATION.md`及`verification.md`的实际完成项，不能把本文的目标机制当作现状。
+本文完整 memory 生命周期仍为设计。目录路由、24h/session 选择及版本化目录别名子集现已按 BRIDGE_ROUTING_SESSION_RULES.md 实现，离线证据见 verification.md；本文其余摘要、检索、删除、分层和治理模块尚未实现。未运行本 memory 方案的真实模型 benchmark、微信端到端或 OS 隔离验收；不得把本文目标机制当作已实现能力。

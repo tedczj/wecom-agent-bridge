@@ -6,7 +6,7 @@ Personal Weixin ClawBot and local CLI/JSONL share the Codex/Pi execution engine.
 
 Supported: personal Weixin ClawBot text/image messages and supplied voice transcripts; CLI single request and persistent stdin JSONL; Codex exec backend; Pi RPC backend; local PNG/JPEG/WebP; durable requests/sessions/results/outbox; bounded single-worker scheduling; explicit cancellation and local review. Not supported: ordinary Weixin friend/group takeover, WeCom, WebSocket/webhooks, standalone ASR, outbound voice/media, file/video/quote handling, OCR, HTTP API, arbitrary remote users, automatic approvals or Windows process management.
 
-The package is `local-agent-bridge` 0.2.0. Old state schema v1 is rejected without modification. New deployments use a fresh stateRoot. Historical chat tasks are not translated or automatically replayed.
+The package is `local-agent-bridge` 0.2.0. Schema v2 upgrades transactionally to v3 (routing state and nullable last-response time); old v1 is rejected without modification. New deployments use a fresh stateRoot. Historical chat tasks are not translated or automatically replayed.
 
 ## Boundaries and modules
 
@@ -34,7 +34,21 @@ Session base key hashes channel, backend, local actor, conversation and workspac
 
 `UNIQUE(channel_id,message_id)` plus a request digest protects idempotency. Identical replay returns the original task. A reused ID with different route/text/image paths fails. If a local image file changes, the operator must use a new request ID; old requests retain their copied immutable input reference.
 
-Local requests check capacity at reservation, before MediaStore preparation. The Weixin receiver first performs bounded remote-image download/decryption, then reserves the job and copies validated media before waiting for the Agent worker. Same-session earlier preparing tasks cannot be overtaken by later ready tasks. Each stateRoot has one worker and one instance lock; independent state roots do not share a workspace lock.
+Local requests check capacity at reservation, before MediaStore preparation. The Weixin receiver first performs bounded remote-image download/decryption, then reserves the job and copies validated media before waiting for the Agent worker. Same-session earlier preparing tasks cannot be overtaken by later ready tasks. Each stateRoot has one worker and one instance lock. Execution also acquires a same-host, same-user lock keyed by the canonical workspace device/inode, independent of stateRoot. Interrupted execution retains this lock for explicit review. Routing mode uses global reservation FIFO, including earlier preparing inputs; legacy mode retains per-session preparation ordering.
+
+## Directory routing and native history
+
+Optional `routing` configuration enables the host-controlled directory/session router described in [BRIDGE_ROUTING_SESSION_RULES.md](BRIDGE_ROUTING_SESSION_RULES.md). Its confirmed R-* rules and BR-01..BR-22 matrix are the authoritative behavior contract. Without this explicit authorization the legacy single-workspace path remains available.
+
+`routing/config.ts` validates roots, profiles, workspaces and optional HTTPS JSON interpreter settings. `catalog.ts` revalidates canonical path and device/inode, separates discovery from execution, searches bounded pages, and treats project metadata as untrusted data. `intent.ts` supports explicit Chinese/slash forms plus optional semantic classification. `history.ts` reads bounded native Codex rollouts and Pi v3 branches without invoking either backend. `router.ts` maintains sticky conversation bindings, versioned aliases, continuation state and historical list snapshots. `routing/lock.ts` implements the physical workspace mutex; it does not implement OS isolation.
+
+Conversation scope comes only from normalized transport identity. Local routing channel identity is pinned on first enablement rather than changing with the default backend. Session keys additionally bind the complete trusted execution profile digest. Routing preparation is serialized before reservation. A single SQLite transaction commits message identity, selected session, immutable target/profile, conversation state and control reply. Worker text stays the original input. Duplicate requests return before interpretation; failed switches and history failures persist a control result and run no Agent. Profile drift or path replacement at dispatch fails the queued job.
+
+Only successful complete Agent turns update last_response_at, in the result/outbox transaction. Automatic reuse is inclusive at 24 hours; unknown/future timestamps do not qualify. Active/new-unsent sessions remain bound. Explicit selection is recorded separately so an old session survives until the next work submission without falsifying its response time. Existing bindings take precedence over native discovery. Native entries already claimed by another conversation/profile in this Store are excluded; the operator must separate account session roots across independent bridge installations. No global account ownership database is inferred from native UUIDs.
+
+Control reads never alter activeWorkspace. List ordinals use a stored, scoped 15-minute snapshot; search and result pages continue through `下一页` / `/more`. Explicit resume rechecks ownership, directory/profile and native availability. A missing bound session confirmed before prompt submission creates a new session with an explicit result notice; other discovery errors block. Pi native assistant messages do not prove `agent_settled`, so only bridge-verified successes supply an automatic-reuse timestamp for Pi.
+
+Global interruption blocking remains conservative across configured workspaces. Creating a new session never clears it. `/cancel taskId` and `/result taskId` in routing mode may address another workspace's task in the same authenticated conversation, preserving cross-user denial. Pure routing controls reject attachments. No message aggregation, implicit task replay, arbitrary shell, new listener or permission escalation is introduced.
 
 ## Image processing
 
@@ -78,7 +92,7 @@ Wait for `agent_settled` plus idle state, not prompt success or `agent_end`; ret
 
 ## Persistence, crashes and output
 
-SQLite WAL + synchronous FULL + foreign keys + bounded busy timeout. One stateRoot instance lock. Schema version 2 contains metadata, sessions, jobs and outbox. Atomic transactions cover reserve/dedup/capacity, worker claim, and terminal status/result/outbox creation.
+SQLite WAL + synchronous FULL + foreign keys + bounded busy timeout. One stateRoot instance lock. Schema version 3 contains metadata, sessions (including last_response_at), jobs, outbox and routing_state. v2 receives an atomic additive migration; old timestamps stay unknown. Atomic transactions cover reserve/dedup/capacity, worker claim, and terminal status/result/outbox creation.
 
 ```text
 preparing -> queued -> running -> succeeded | failed

@@ -1,10 +1,10 @@
 # Bridge agent：目录定位、路由与会话规则
 
-状态：用户已确认的目标行为；待实现，不表示当前代码已经支持。
+状态：已实现并通过离线验收；真实语义模型与微信新路由交付尚未验收，证据见 verification.md。
 日期：2026-09-22。
-代码基线：`535915eae17f46ad986e21d3a721ecb58ff1e735`（dev）。
+审查基线：`5a5c488`（dev）。
 
-本文是这项新能力的行为契约。`DESIGN.md` 描述现有实现，两者的“当前实现 / 目标行为”不得混写；本能力实现后应同步当前设计和验证证据。此前讨论过的“每轮按话题自动切项目”“依赖用户准确输入目录 ID”不采用。memory 的生成、更新、删除、搜索与分层另见后续配套设计。
+本文是这项能力的行为契约和实施设计。`DESIGN.md` 描述当前实现，`verification.md` 记录实际证据；离线通过不表示真实模型/微信新路由已经验证。此前讨论过的“每轮按话题自动切项目”“依赖用户准确输入目录 ID”不采用。memory 的生成、更新、删除、搜索与分层另见后续配套设计。
 
 ## 1. 目标与非目标
 
@@ -155,6 +155,62 @@ bridge 应记住有助于目录定位和交互的事实，而不是积累所有�
 | BR-21 | 恶意 README 要求扩大授权 | 当数据，不执行指令 |
 | BR-22 | 用户纠正简称 / 目录不存在 | 版本化修正 / 路径失效，不错误复用 |
 
-## 10. 文档与实施边界
+## 10. 审查结论与实现结构
 
-本次只固化规则。未实现 memory、目录遍历、多 workspace 调度或 native session discovery；没有声称通过 live backend、微信交付、macOS 或隔离测试。实施时应遵守 AGENTS.md，保留现有去重、输出交付、取消、崩溃恢复、隐私与权限边界。
+原稿的 22 项行为验收保留。缺口是配置、状态事务、原生历史可信度、控制意图解析、搜索 continuation 和异常恢复没有落到接口；以下定义作为同一份设计的实施契约。配套 memory 全生命周期仍由 BRIDGE_MEMORY_DESIGN.md 定义，本次只实现目录别名与最近绑定。
+
+采用一个 transport、一个 SQLite Store、一个全局 FIFO worker。每个已提交 job 固定目录身份与 profile 摘要，执行时从可信配置重新解析；不把模型返回值作为 cwd、命令或环境。不同目录也串行，强于同目录串行要求。配置变化导致排队任务摘要不匹配时显式失败，不换 profile 执行。
+
+模块：routing/config.ts 负责 operator 配置；catalog.ts 负责受控目录引用、分页与别名校验；history.ts 负责 Codex/Pi 原生历史；intent.ts 负责自然语言和可选 HTTPS 语义解释；router.ts 负责状态选择和控制回复；Store/Bridge 负责原子提交与执行。
+
+## 11. 配置和启用
+
+旧配置继续单目录运行，不隐式授权宿主目录扫描。配置 `routing` 后启用本设计：
+
+- `roots`: `{id,path,profile?}` 数组；只在这些真实目录下发现。root profile 是新发现目录的确定性默认配置。
+- `profiles`: `{id,version,backend?,agent?,codex?}` 数组；覆盖基础执行设置后经过原有严格配置校验。version 是 operator 版本；实际配置内容也参与摘要，改内容不能靠不改 version 绕过。
+- `workspaces`: `{id,path,profile,aliases?,description?}` 数组；包含基础 workspace，精确匹配优先于最长根匹配。不同配置不得重复真实目录。
+- `history`: boolean，默认 true；只读配置 backend 的 session root。设 false 明确表示 operator 不授权原生历史发现，bridge 自身会话仍可续接。
+- `interpreter?`: `{endpoint,model,apiKeyEnv?,timeoutMs?}`；可选 HTTPS Chat Completions JSON 接口，model 为 operator 提供的实际 ID。只传用户路由文本、有界对话及候选说明，不传凭据、工具输出和完整 worker 历史。禁止重定向，响应有上限；只接受有限动作 schema。没有解释器时支持文档列出的自然表达和 slash 控制；未知/歧义控制表达澄清，不能声称任意口语语义均已验证。
+
+配置和 stateRoot 必须在所有执行目录外，原有 HOME、隔离和环境白名单继续生效。初版不动态热加载配置；重启后重新验证目录设备/inode、真实路径及摘要。精确目录撤权、删除、替换均不得偷偷回默认目录。
+
+## 12. 输入、事务及数据契约
+
+可信 conversation key 哈希 transport channel、bot/account、sender、chat target；从已校验的 Incoming.route 产生。workspace binding key 还包含实际 profile/backend 身份。activeWorkspace 与 lastSession 分开保存；查询不改变 activeWorkspace。
+
+Store 从 schema v2 事务升级为 v3，增加 routing 状态与 `last_response_at`；旧时间保持 null，不以 mtime/updated_at 补造。旧单目录会话不自动当作新 profile 的原生历史所有权凭据。
+
+所有入口按接收顺序串行完成路由/提交，Agent 执行异步。先查全局 message ID/digest 去重，再调用解释器或读历史。同一原文重放不再切目录、建会话或写别名；不同内容同 ID 拒绝。一次事务固定 job、session binding、active workspace、别名/列表快照和控制结果；媒体准备仍采用 preparing 状态。事务前崩溃没有 worker 副作用；提交后的恢复采用原有状态机。阻塞或查询失败成为持久化控制错误，通过 outbox 交付。
+
+每个任务保留原文；控制语句同时带工作要求时，明确允许执行才将原文交给 worker，不用模型生成内容替换。纯查询、切目录、别名和新建命令不调用 worker。带附件的纯控制拒绝，不能丢弃附件。原有 `/cancel`、`/result`、`/status` 保留。
+
+## 13. 目录发现、记忆及失败
+
+先查 scope 内显式别名、operator aliases、已选目录；然后受限 BFS 扫描根内目录。名称/片段/缩写/用途是候选线索；读取 README/package.json 的有界纯文本，作为不可信描述。精确命中或唯一有充分依据的候选可选中，多个同等候选返回最小澄清；配置解释器时可用候选说明进一步区分。
+
+搜索每页最多 200 个条目、2 秒，单次深度窗口 8；跳过 .git/node_modules/cache 等目录。不跟随目录符号链接。预算耗尽保留服务端队列与随机 cursor，返回 partial，`继续搜索` 继续；cursor 绑定 conversation、query、配置摘要，15 分钟过期。客户端不能提供任意路径作 continuation。每次读取及执行前重验证真实路径和设备/inode。待处理队列超过 10,000 条、目录过宽或文件超限时显式返回资源错误；不把无法完成的扫描报告为不存在。时间预算采用每个本地 IO 之间的协作检查，不承诺内核阻塞 IO 的硬超时。
+
+别名记录 scope、version、来源（用户显式/成功选择）、原始 message ID、目录身份和有效状态。显式纠正覆盖旧指向且递增版本；相对时间/上一个项目只读最近选择，不存永久别名。撤权/删除/身份变化使记录失效；模糊猜测不写永久别名。找不到、权限问题、未配置执行 profile、partial、歧义分别返回，均不执行旧目录任务。
+
+## 14. 原生历史和选择
+
+Codex 从配置 CODEX_HOME/sessions 的 rollout JSONL 读取 session_meta、turn_context 和 event_msg；Pi 从配置 agent.sessionRoot 读取 session v3 JSONL header、message、model_change 和活动 parentId 分支。只读取规范化 cwd 相符、profile 所有权允许的记录。session root 是 operator 对账户/历史的授权边界，不能仅靠裸 UUID 推断账户。同一 Store 中，一个原生会话一旦被 bridge conversation/profile 绑定，其他 conversation/profile 不能认领。独立 bridge 安装应使用独立账户 session root；本实现没有跨安装的全局原生会话归属数据库。
+
+每页有文件数/字节/时间上限；分页搜索遍历全部授权历史，而非只最近十条。格式不支持、权限、超限、超时显式失败/partial，不能当空历史。最后回复时间只用可信完成事件：Codex task_complete/turn_complete 的最终消息；Pi 原生消息本身不能证明 agent_settled，因此未经过 bridge 成功执行记录的 Pi 原生历史时间保持未知，可显式恢复但不自动猜测时间。当前 Pi backend 成功仍必须 agent_settled + idle + cleanup。
+
+没有绑定时，先完成有界原生发现；发现 partial 阻止自动选择，提示继续查询。绑定存在时不被更新的本地历史替换。新建/活跃尚无首答的 session 由持久化引用和活动 job 判断；已失败且无完整回复的空闲 session 不自动复用。恰好 24h 可复用，未来时间不自动复用。完整成功结果事务更新 last_response_at；所有 control/outbox/进度操作不更新。
+
+历史列表默认 10 个，带 bridge 不透明 handle、标题、UTC 创建/回复时间、有限预览和可恢复标记。查找/阅读/恢复分离，序号绑定持久化快照，15 分钟过期；恢复重新验证所有权、目录/profile、文件存在、tainted/blocked。显式恢复忽略 24h，但不绕过安全检查。缺失会话只有在 prompt 前可证明时允许新建并告知；无法确认时阻塞，不自动重试 worker。
+
+## 15. 并发、重启、锁与验证关闭条件
+
+同一进程全局单 worker，跨 stateRoot 使用按真实目录设备/inode 的同用户宿主锁。锁不放 worker 工作目录；执行不确定时保留阻塞信息，只能本地 review 确认进程停止并承认副作用后清除。锁的保证限于同宿主、同用户、遵守此协议的 bridge，不代表外部 CLI/其他用户/脱离进程组的任务隔离。
+
+原 58 ID 不删除。BR-01..BR-22 各有具名离线测试和实际断言，覆盖原生合成 fixture、重启、并发、预算、边界时间、非法目录/profile 和恶意元信息；另加生产入口到测试子进程的集成测试。运行 npm ci、npm run check 并保存脱敏输出。真实模型的自然语言准确性、真实原生版本兼容和微信端新路由交付需要 --live/显式运行，未做时明确记为未验证，不把 offline doubles 报成 live。
+
+## 16. 本次交付与证据
+
+配置示例：`config.routing.example.json`；使用说明：`README.md`；源码和验收逐项映射：`TEST_MATRIX.md`；本次命令与环境：`verification.md`。BR-01..BR-22 均有具名离线测试，原 58 ID 保留。默认不修改既有私人运行配置，也不重启现场微信实例。
+
+可选语义模型是外部依赖，未配置时只有明确列出的自然语言表达/slash 命令和澄清回答可用。未验证的真实模型分类准确性、真实 native 文件兼容、微信新路由投递及 OS 隔离不计为通过。更完整的 memory 生成、摘要、删除及分层治理不属于这次目录别名实现。

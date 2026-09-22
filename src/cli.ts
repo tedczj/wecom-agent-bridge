@@ -1,3 +1,4 @@
+import { reviewWorkspaceLock } from './routing/lock.ts';
 import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import path from 'node:path';
@@ -70,7 +71,14 @@ export function review(c: Config, acknowledged: boolean): number {
       rmSync(marker);
     }
     const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c);
-    try { store.recover(); return store.review(); } finally { store.close(); }
+    try {
+      store.recover();
+      reviewWorkspaceLock(c.workspace.path,c.stateRoot);
+      for(const row of store.db.prepare("SELECT DISTINCT json_extract(input_json,'$.routing.directory') directory FROM jobs WHERE json_extract(input_json,'$.routing.directory') IS NOT NULL").all() as {directory:string}[]) {
+        const directory=JSON.parse(row.directory);reviewWorkspaceLock(directory.path,c.stateRoot,directory.identity);
+      }
+      return store.review();
+    } finally { store.close(); }
   } finally { unlock(); }
 }
 export async function runCli(argv = process.argv.slice(2)): Promise<number> {

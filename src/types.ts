@@ -14,6 +14,7 @@ export interface Incoming {
 export interface NormalizedInput {
   taskId: string; messageId: string; route: Route; receivedAt: number;
   text: string; images: ImageRef[]; workspaceId: string; sessionKey: string; generation: number;
+  routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string };
 }
 export type SessionRef = {
   kind: 'pi'; sessionId: string; sessionFile: string; hasHistory?: boolean;
@@ -49,7 +50,8 @@ export interface Job {
 }
 export interface Session {
   session_key: string; base_key: string; generation: number; agent_ref_json: string | null;
-  state: 'new' | 'ready' | 'tainted';
+  state: 'new' | 'ready' | 'tainted'; last_response_at: number | null; created_at: number;
+  backend: string; workspace_id: string; actor_id: string;
 }
 export type DeliveryState = 'pending' | 'sending' | 'sent' | 'unknown' | 'failed';
 export interface Delivery {

@@ -1,3 +1,4 @@
+import { Catalog } from '../src/routing/catalog.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -21,8 +22,13 @@ async function main(): Promise<void> {
     const store = new Store(dbFile, c, true);
     try {
       const foreign = store.db.prepare(`SELECT 1 FROM jobs j JOIN sessions s USING(session_key)
-        WHERE s.backend != ? AND j.status IN ('preparing','queued','running','cancel_requested') LIMIT 1`).get(c.backend);
+        WHERE s.backend != ? AND json_extract(j.input_json,'$.routing') IS NULL AND j.status IN ('preparing','queued','running','cancel_requested') LIMIT 1`).get(c.backend);
       invariant(!foreign, 'BACKEND_SWITCH_BUSY');
+      const routed=store.db.prepare("SELECT input_json FROM jobs WHERE json_extract(input_json,'$.routing') IS NOT NULL AND kind='agent' AND status IN ('preparing','queued','running','cancel_requested')").all() as {input_json:string}[];
+      if(routed.length) {
+        invariant(c.routing,'ROUTING_CONFIG_REQUIRED');const catalog=new Catalog(c);
+        for(const row of routed) { const r=JSON.parse(row.input_json).routing; invariant(catalog.target(r.directory).digest===r.digest,'PROFILE_CHANGED'); }
+      }
     } finally { store.close(); }
   };
   safeToSwitch();

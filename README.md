@@ -12,11 +12,47 @@
 | 微信图片 / 图文 | 从微信 CDN 有界下载、按需 AES 解密，完整校验后原生传给 Agent |
 | 微信语音 | 使用微信附带的 `voice_item.text`；没有转写文本时提示改发文字，未接额外 ASR |
 | 文件、视频、引用消息 | 明确回复暂不支持，不作为完整任务执行 |
-| 连续对话 | 同一微信账号会话延续；`/new` 开始新会话 |
+| 连续对话 | 同一微信账号会话延续；`/new` 开始新会话；启用 routing 后按目录/profile 绑定及 24 小时规则续接 |
 | 重复消息 | 同一消息 ID 去重，不重复执行已有任务 |
 | 本地输入 | 单次 `run` 或持续 stdin JSONL `serve` |
 
 回复目前只包含文字，没有语音合成或图片/文件发送。执行失败、取消和超时都可能已经产生副作用。
+
+## 可选目录路由与历史会话
+
+[完整规则与实施设计](docs/BRIDGE_ROUTING_SESSION_RULES.md)保留 BR-01..BR-22。[config.routing.example.json](config.routing.example.json) 提供多目录配置模板；将私有配置放在所有执行目录之外，填写实际路径后使用原有 `--config` / `start.sh` 入口。旧配置保持单目录，不自动扩大扫描权限；无需重建微信登录。
+
+启用 `routing` 后，首条消息使用默认目录。之后保持当前目录，只有明确切换才改变；24 小时只决定自动续接，不重置目录。目录授权 roots 与执行 profiles 分离；根级 profile 是 operator 对根下新目录的执行授权，可以省略以禁止自动继承。配置变更需重启，已排队任务的 profile 摘要不匹配会失败，不会改派。
+
+| 用户表达 | 行为 |
+|---|---|
+| `去配音`、`切回微信桥`、`/route video` | 按别名/描述/授权目录定位；纯切换不调用 worker |
+| `去配音，先别改，只检查` | 定位后将原文交给该目录的 Agent |
+| `参考一下视频项目的实现` | 保持当前目录；并不额外授予参考目录读取权限 |
+| `开个新会话`、`/new` | 新建逻辑会话；不取消正在执行的任务 |
+| `重新跑一下测试` | 正常任务，按当前会话规则继续 |
+| `video 有哪些历史会话`、`/sessions video` | 查询该目录，不切目录；默认显示十条 |
+| `/find 关键词`、`下一页` | 搜索授权历史，包括十条以前的记录；或继续查询 |
+| `看看第二个`、`继续第二个` | 阅读或选择最近列表快照中的会话；恢复后下一条任务可续接超过 24h 的历史 |
+| `当前目录简称微信桥`、`/alias 微信桥` | 保存有版本和来源的 scoped 别名 |
+| `先停一下`、`/cancel [taskId]` | 取消本对话任务；停止不确定仍阻塞 |
+
+无 `routing.interpreter` 时使用有界的中文表达及 slash 解析，不声称理解任意口语。需要语义解释和候选用途区分时可配置：
+
+```json
+"interpreter": {
+  "endpoint": "https://your-provider.example/v1/chat/completions",
+  "model": "YOUR_ACTUAL_ROUTER_MODEL_ID",
+  "apiKeyEnv": "BRIDGE_ROUTER_API_KEY",
+  "timeoutMs": 10000
+}
+```
+
+该可选接口要求 Chat Completions 兼容的 JSON 输出；endpoint 和实际模型 ID 由 operator 验证。只做意图与候选判断，不执行 shell。密钥仅由宿主从指定环境变量读取，不传给 worker。解释器会接收用户原文的路由上下文和有限项目描述；超过输入/响应预算或服务失败时明确阻塞，不偷偷切目录。复杂语义准确性尚未进行真实模型验收。
+
+原生历史来源是配置的 Codex home 下 `sessions` 和 Pi sessionRoot。历史读取失败/partial 不当作空历史；`history:false` 明确关闭原生发现，仅保留 bridge 自己的会话。原生历史所属账户以 operator 授权的存储根为边界，应为不同账户使用独立根。Codex 用已验证完成事件的时间；Pi 原生文件不能证明 `agent_settled`，未被 bridge 验证成功的记录只供显式恢复。旧 schema v2 会事务升级为 v3，旧回复时间保留未知。启用新路由前应排空旧模式队列；跨模式排队任务不会自动执行。
+
+同一 bridge 全局串行；同用户、同宿主的多个 bridge 对同一真实目录还使用独占锁。执行中断后锁保留，`review --acknowledge-side-effects` 检查进程后清理本实例锁。外部 CLI、其他用户和脱离进程组的副作用不在该锁的保证内。
 
 ## 安装与配置
 

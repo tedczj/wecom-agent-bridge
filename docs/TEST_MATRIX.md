@@ -41,7 +41,7 @@
 | B05 | 取消与实际子孙进程停止 | contract/codex C12–C14 + contract/pi B05 + CLI05；脱离进程组的守护程序仍属人工/外部隔离边界。 |
 | B06 | 会话映射持久化失败 | contract/codex C11 + contract/pi B06。 |
 | Q01 | 十次并发重复和重启重放 | e2e/bridge Q01、recovery R02、CLI01、微信 W06/W12。 |
-| Q02 | 全局单执行任务 | 每个 stateRoot 单 worker：unit/store Q02、e2e/bridge queue；不同 stateRoot 无工作目录级互斥。 |
+| Q02 | 全局单执行任务 | 每个 stateRoot 单 worker：unit/store Q02、e2e/bridge queue；新增 routing BR-19 验证跨 stateRoot 同真实目录互斥（同宿主同用户）。 |
 | Q03 | preparing 不被同会话越序 | unit/store Q03 + e2e/bridge Q03。 |
 | Q04 | 队列容量前置拒绝 | e2e/bridge queue capacity case。 |
 | Q05 | 重复 /new | e2e/bridge Q05。 |
@@ -87,3 +87,34 @@
 `tests/e2e/start.test.ts` 验证其他 cwd、含空格配置路径、平滑替换、SIGSTOP 后 SIGKILL 升级、残留锁恢复、JSONL stdout、拒绝终止无关 PID、显式后端来回切换时保留共享状态、配置不匹配时不终止原实例，以及无存活实例时仍拒绝把排队任务交给其他后端。
 
 默认测试不连接真实模型或微信账号。图片理解、语音转写质量、实际沙箱以及脱离进程组的守护程序清理需要独立验收。
+
+## 目录路由与历史会话
+
+原始 58 个 ID 保持原表。新增 22 个行为场景由 `tests/unit/routing.test.ts` 的具名 BR 测试覆盖；该文件还包含生产 openService + Codex/Pi 测试子进程的集成路径，名称中的 production entry 只表示真实入口，backend 仍是离线 double。
+
+| ID | 可执行断言 |
+|---|---|
+| BR-01 | 首次默认目录，记录实际 worker workspaceId |
+| BR-02 | 换话题/参考其他项目仍用同一 workspace/session |
+| BR-03 | operator 别名定位；session 不串项目 |
+| BR-04 | 授权根扫描、README 用途匹配、确定 profile 继承 |
+| BR-05 | 分页预算与持久化 continuation，超过 200 个目录仍可继续 |
+| BR-06 | 多候选澄清，不执行；答目录名后选择 |
+| BR-07 | 不存在/无 profile 不执行且保持当前绑定 |
+| BR-08 | symlink、撤权、同路径替换设备/inode 均拒绝 |
+| BR-09 | 查询其他目录不改变 activeWorkspace |
+| BR-10 | 23h59m、24h、24h+1ms，未知/未来时间；过期生成新 session |
+| BR-11 | status/history 控制不更新完整回复时间；原 D 系列另测交付 |
+| BR-12 | 新建去重、重新跑仍续接；新建不取消活跃任务 |
+| BR-13 | A-B-A 保留 A 原绑定 |
+| BR-14 | 活跃尚未回复时连续输入保持同一个 session |
+| BR-15 | 格式故障/注入超时/partial 不当空历史执行 |
+| BR-16 | 超过 10 条搜索、超过 100 文件继续、列表快照序号、结果分页 |
+| BR-17 | 显式恢复超过 24h 后下一任务仍续接所选历史 |
+| BR-18 | conversation/profile/cwd 归属验证；跨会话查询/恢复拒绝 |
+| BR-19 | 排队目标固定、重启恢复、事务回滚、profile 漂移拒绝、跨 stateRoot 互斥；真实入口切换 Codex/Pi doubles |
+| BR-20 | tainted/blocked 下新建仍拒绝 |
+| BR-21 | 恶意 README 只能作数据，不扩大根/profile/执行 schema |
+| BR-22 | 简称纠正版本递增，删除路径使别名失效 |
+
+还测试 Pi v3 不伪造 settled 时间、解释器 schema/响应上限/禁止重定向/实际配置模型保持。默认离线模型响应仅用于协议验证，不证明真实语义分类准确率、真实原生会话版本兼容或微信新路由送达。

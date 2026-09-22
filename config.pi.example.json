@@ -1,5 +1,5 @@
 {
-  "backend": "codex",
+  "backend": "pi",
   "workspace": {
     "id": "default",
     "path": "/absolute/path/to/test-repository"
@@ -9,17 +9,13 @@
     "actorId": "operator"
   },
   "agent": {
-    "command": "/absolute/path/to/codex",
+    "command": "/absolute/path/to/pi",
     "args": [],
     "env": {
       "HOME": "/absolute/path/to/dedicated-agent-home"
     },
     "passEnv": [],
-    "isolation": "native"
-  },
-  "codex": {
-    "home": "/absolute/path/to/dedicated-codex-home",
-    "sandbox": "read-only",
-    "networkAccess": false
+    "isolation": "unverified",
+    "sessionRoot": "/absolute/path/to/pi-sessions"
   }
 }

@@ -1,41 +1,74 @@
-import { test, type TestContext } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync,writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 import { Bridge } from '../../src/bridge.ts';
-import { Store } from '../../src/store.ts';
-import { MediaStore, SafeDownloader } from '../../src/media.ts';
-import { PiBackend } from '../../src/pi.ts';
+import { MediaStore } from '../../src/media.ts';
+import { openService } from '../../src/main.ts';
 import { OutboxPump } from '../../src/reply.ts';
-import { BackendStateUnknown } from '../../src/errors.ts';
-import { setup, fixture, bot, FakeBackend, FakeChannel, deferred, until } from '../helpers.ts';
-import type { MediaProvider } from '../../src/types.ts';
-function harness(t: TestContext, media?: MediaProvider) { const x = setup(); const store = new Store(path.join(x.c.stateRoot, 'bridge.sqlite'), x.c); const backend = new FakeBackend(); const channel = new FakeChannel(); const bridge = new Bridge(x.c, bot, store, channel, backend, media ?? { prepare: async () => [], validate: async () => { } }); bridge.start(); t.after(async () => { await bridge.stop(); store.close(); x.cleanup(); }); return { ...x, store, backend, channel, bridge }; }
-test('N03: unauthorized sender/group triggers no download, no prompt and no sensitive echo', async (t) => { let downloads = 0; const h = harness(t, { prepare: async () => { downloads++; return []; }, validate: async () => { } }); for (const f of [fixture('secret', undefined, 'outsider'), fixture('secret', undefined, 'owner', 'not-allowed')]) {
-    f.body.msgtype = 'image';
-    f.body.image = { url: 'https://cdn.example.com/secret' };
-    assert.equal((await h.bridge.accept(f)).rejected, 'UNAUTHORIZED');
-} await h.bridge.idle(); assert.equal(downloads, 0); assert.equal(h.backend.calls.length, 0); assert.equal(h.channel.receipts.length, 0); assert.equal(h.channel.sent.length, 0); });
-test('Q01: 10 concurrent deliveries and restart replay execute once', async (t) => { const h = harness(t); const f = fixture(); const receipts = await Promise.all(Array.from({ length: 10 }, () => h.bridge.accept(f))); await h.bridge.idle(); assert.equal(new Set(receipts.map(x => x.taskId)).size, 1); assert.equal(h.backend.calls.length, 1); await h.bridge.stop(); const newBridge = new Bridge(h.c, bot, h.store, h.channel, h.backend, { prepare: async () => [], validate: async () => { } }); newBridge.start(); assert((await newBridge.accept(f)).duplicate); await newBridge.idle(); assert.equal(h.backend.calls.length, 1); await newBridge.stop(); });
-test('Q02: one global active turn, including tasks from separate users', async (t) => { const h = harness(t); const gate = deferred(); h.backend.handler = async (i) => { if (i.text === 'first')
-    await gate.promise; return { outcome: 'success', finalText: i.text }; }; await h.bridge.accept(fixture('first')); await until(() => h.backend.active === 1); await h.bridge.accept(fixture('second', undefined, 'other')); assert.equal(h.backend.calls.length, 1); gate.resolve(); await h.bridge.idle(); assert.equal(h.backend.maxActive, 1); assert.deepEqual(h.backend.calls.map(i => i.text), ['first', 'second']); });
-test('Q03: ready text cannot overtake an earlier preparing image in the same session', async (t) => { const gate = deferred(); const h = harness(t, { prepare: async (_id, media) => { if (media.length)
-        await gate.promise; return []; }, validate: async () => { } }); const image = fixture('image'); image.body.msgtype = 'image'; image.body.image = { url: 'https://cdn.example.com/i' }; await h.bridge.accept(image); await h.bridge.accept(fixture('later text')); await sleep(20); assert.equal(h.backend.calls.length, 0); gate.resolve(); await h.bridge.idle(); assert.deepEqual(h.backend.calls.map(i => i.text), ['请分析这张图片', 'later text']); });
-test('Q04: per-session and global queue limits reject before media and Agent', async (t) => { const gate = deferred(); let downloads = 0; const h = harness(t, { prepare: async () => { downloads++; await gate.promise; return []; }, validate: async () => { } }); h.c.queue.maxPendingPerSession = 1; h.c.queue.maxPendingGlobal = 2; await h.bridge.accept(fixture('a')); assert.equal((await h.bridge.accept(fixture('b'))).rejected, 'QUEUE_FULL'); await h.bridge.accept(fixture('c', undefined, 'other')); assert.equal((await h.bridge.accept(fixture('d', undefined, 'owner', 'g1'))).rejected, 'QUEUE_FULL'); assert.equal(downloads, 2); assert.equal(h.backend.calls.length, 0); gate.resolve(); await h.bridge.idle(); });
-test('Q05: duplicate /new increments once; new generation maps to a new backend session', async (t) => { const h = harness(t); const first = await h.bridge.accept(fixture('first')); await h.bridge.idle(); const f = fixture('/new'); await Promise.all(Array.from({ length: 10 }, () => h.bridge.accept(f))); const second = await h.bridge.accept(fixture('second')); await h.bridge.idle(); assert.equal(JSON.parse(h.store.get(first.taskId!).input_json).generation, 0); assert.equal(JSON.parse(h.store.get(second.taskId!).input_json).generation, 1); assert.equal(h.backend.refs[1], undefined); assert.equal(h.backend.calls.length, 2); });
-test('Q06: /cancel and /result cannot access another sender or conversation', async (t) => { const h = harness(t); const first = await h.bridge.accept(fixture('private')); await h.bridge.idle(); for (const cmd of ['/result', '/cancel']) {
-    const denied = await h.bridge.accept(fixture(`${cmd} ${first.taskId}`, undefined, 'other'));
-    assert.equal(h.store.get(denied.taskId!).status, 'failed');
-    assert(!h.store.get(denied.taskId!).result_text?.includes('answer private'));
-} const denied = await h.bridge.accept(fixture(`/result ${first.taskId}`, undefined, 'owner', 'g1')); assert.equal(h.store.get(denied.taskId!).status, 'failed'); assert.equal(h.backend.calls.length, 1); });
-test('Q08: /status and /cancel bypass a long task; unknown slash never reaches Pi', async (t) => { const h = harness(t); h.backend.handler = async (_i, signal) => { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); return { outcome: 'cancelled', finalText: 'cancelled' }; }; const task = await h.bridge.accept(fixture('wait')); await until(() => h.backend.active === 1); const start = Date.now(); const status = await h.bridge.accept(fixture('/status')); assert(Date.now() - start < 1000); assert.equal(h.store.get(status.taskId!).status, 'succeeded'); assert.match(h.store.get(status.taskId!).result_text!, /running/); const unknown = await h.bridge.accept(fixture('/bash rm -rf .')); assert.equal(h.store.get(unknown.taskId!).status, 'failed'); await h.bridge.accept(fixture('/cancel')); await h.bridge.idle(); assert.equal(h.store.get(task.taskId!).status, 'cancelled'); assert.equal(h.backend.calls.length, 1); });
-test('D07: auto pages capped; explicit /result retrieves existing exact page without another Agent call', async (t) => { const h = harness(t); h.c.reply.chunkBytes = 200; h.c.reply.maxAutoParts = 3; h.backend.handler = async () => ({ outcome: 'success', finalText: '长内容😀'.repeat(200) }); const first = await h.bridge.accept(fixture('long')); await h.bridge.idle(); const out = h.store.db.prepare('SELECT body_json FROM outbox WHERE task_id=? ORDER BY part_no').all(first.taskId!) as Array<{
-    body_json: string;
-}>; assert.equal(out.length, 3); assert.match(JSON.parse(out[2]!.body_json).text, /\/result .+ 4/); const cmd = await h.bridge.accept(fixture(`/result ${first.taskId} 4`)); assert.equal(h.backend.calls.length, 1); const page = h.store.get(cmd.taskId!).result_text!; assert.match(page, new RegExp(`^\\[${first.taskId!.slice(0, 8)} 4/`)); assert(Buffer.byteLength(page) <= 200); });
-test('M10: real image is saved while an earlier Agent runs, before entering its execution queue', async (t) => { const x = setup(); const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#00ff00' } }).png().toBuffer(); const media = new MediaStore(x.c, new SafeDownloader(['cdn.example.com'], async () => [{ address: '8.8.8.8', family: 4 }], async () => ({ status: 200, body: (async function* () { yield png; })() }))); const store = new Store(path.join(x.c.stateRoot, 'bridge.sqlite'), x.c); const backend = new FakeBackend(), channel = new FakeChannel(), gate = deferred(); backend.handler = async (i) => { if (i.text === 'long')
-    await gate.promise; return { outcome: 'success', finalText: 'ok' }; }; const bridge = new Bridge(x.c, bot, store, channel, backend, media); bridge.start(); t.after(async () => { gate.resolve(); await bridge.stop(); store.close(); x.cleanup(); }); await bridge.accept(fixture('long')); await until(() => backend.active === 1); const f = fixture(); f.body.msgtype = 'image'; f.body.image = { url: 'https://cdn.example.com/i' }; const second = await bridge.accept(f); await until(() => store.get(second.taskId!).status === 'queued'); const manifest = JSON.parse(store.get(second.taskId!).input_json); assert.deepEqual(readFileSync(manifest.images[0].localPath), png); assert.equal(backend.calls.length, 1); assert(!store.get(second.taskId!).input_json.includes('https:')); gate.resolve(); await bridge.idle(); assert.equal(backend.calls.length, 2); });
-test('timeout stops before terminal; uncertain cleanup blocks every new execution including /new', async (t) => { const h = harness(t); h.c.agent.taskTimeoutMs = 20; h.backend.handler = async (_i, signal) => { await new Promise<void>(resolve => signal.addEventListener('abort', () => resolve(), { once: true })); return { outcome: 'cancelled', finalText: 'stopped' }; }; const first = await h.bridge.accept(fixture()); await h.bridge.idle(); assert.equal(h.store.get(first.taskId!).status, 'timed_out'); h.backend.handler = async () => { throw new BackendStateUnknown(); }; const next = await h.bridge.accept(fixture()); await h.bridge.idle(); assert.equal(h.store.get(next.taskId!).status, 'interrupted'); assert(h.store.blocked()); assert.equal((await h.bridge.accept(fixture())).rejected, 'WORKSPACE_BLOCKED'); const reset = await h.bridge.accept(fixture('/new')); assert.equal(h.store.get(reset.taskId!).status, 'failed'); });
-test('full offline WeCom-shaped input -> actual Pi RPC subprocess -> durable result -> outbound', async (t) => { const x = setup(); const store = new Store(path.join(x.c.stateRoot, 'bridge.sqlite'), x.c); const channel = new FakeChannel(), media = new MediaStore(x.c), backend = new PiBackend(x.c); const bridge = new Bridge(x.c, bot, store, channel, backend, media); bridge.start(); t.after(async () => { await bridge.stop(); store.close(); x.cleanup(); }); const r = await bridge.accept(fixture('perform task')); await bridge.idle(); assert.equal(store.get(r.taskId!).status, 'succeeded'); assert.equal(store.get(r.taskId!).result_text, 'final answer'); const pump = new OutboxPump(store, channel, x.c.reply); await pump.tick(); assert.equal(channel.sent.length, 1); assert.equal(channel.sent[0]?.route.targetId, 'owner'); assert.match(channel.sent[0]!.text, /final answer/); });
+import type { AgentResult,ImageRef } from '../../src/types.ts';
+import { setup,fixture,FakeBackend,FakeChannel,eventually,output } from '../helpers.ts';
+function harness(t:Parameters<typeof setup>[0]) {
+ const h=setup(t),store=h.store(),backend=new FakeBackend(),channel=new FakeChannel(),media=new MediaStore(h.c);
+ const bridge=new Bridge(h.c,'local:codex',store,channel,backend,media);bridge.start();h.cleanups.push(()=>bridge.stop());
+ return {...h,store,backend,channel,media,bridge};
+}
+test('N02/Q01: concurrent duplicate submissions execute once and survive store replay',async t=>{
+ const h=harness(t),f=fixture('hello');const results=await Promise.all(Array.from({length:10},()=>h.bridge.accept(f)));await h.bridge.idle();
+ assert.equal(h.backend.calls.length,1);assert.equal(new Set(results.map(x=>x.taskId)).size,1);assert.equal(results.filter(x=>x.duplicate).length,9);
+ const replay=await h.bridge.accept(f);assert(replay.duplicate);await h.bridge.idle();assert.equal(h.backend.calls.length,1);
+});
+test('Q05/B03: duplicate /new increments generation once and never invokes Agent',async t=>{
+ const h=harness(t);await h.bridge.accept(fixture('a'));await h.bridge.idle();const command=fixture('/new');await h.bridge.accept(command);await h.bridge.accept(command);
+ await h.bridge.accept(fixture('b'));await h.bridge.idle();assert.equal(h.backend.calls.length,2);assert.equal(h.backend.calls[1]!.generation,1);assert.equal(h.backend.refs[1],undefined);
+});
+test('N08: unknown command fails explicitly without running Agent',async t=>{
+ const h=harness(t),r=await h.bridge.accept(fixture('/unknown'));assert.equal(h.store.get(r.taskId!).status,'failed');assert.equal(h.store.get(r.taskId!).error_code,'UNSUPPORTED_COMMAND');assert.equal(h.backend.calls.length,0);
+});
+test('Q08/Q04: control commands do not wait for Agent; rejected tasks start no media work',async t=>{
+ const h=harness(t);h.c.queue.maxPendingPerSession=1;let release!:(r:AgentResult)=>void;const held=new Promise<AgentResult>(resolve=>{release=resolve;});h.backend.action=()=>held;
+ await h.bridge.accept(fixture('first'));await eventually(()=>h.backend.calls.length===1);
+ let preparations=0;const original=h.media.prepare.bind(h.media);h.media.prepare=(...args)=>{preparations++;return original(...args);};
+ await h.bridge.accept(fixture('second'));const rejected=await h.bridge.accept(fixture('third'));assert.equal(rejected.rejected,'QUEUE_FULL');assert.equal(preparations,1);
+ const begin=Date.now(),status=await h.bridge.accept(fixture('/status'));assert.equal(h.store.get(status.taskId!).status,'succeeded');assert(Date.now()-begin<1000);
+ release({outcome:'success',finalText:'done'});await h.bridge.idle();assert.equal(h.backend.maxActive,1);
+});
+test('M10: later image is persisted while previous Agent turn is still running',async t=>{
+ const h=harness(t);let release!:(r:AgentResult)=>void;const held=new Promise<AgentResult>(resolve=>{release=resolve;});h.backend.action=()=>held;
+ await h.bridge.accept(fixture('first'));await eventually(()=>h.backend.calls.length===1);
+ const file=path.join(h.root,'image.png');writeFileSync(file,await sharp({create:{width:3,height:3,channels:3,background:{r:0,g:0,b:255}}}).png().toBuffer());
+ const r=await h.bridge.accept(fixture('describe','default',randomUUID(),[file]));await eventually(()=>h.store.get(r.taskId!).status==='queued');
+ assert.equal(JSON.parse(h.store.get(r.taskId!).input_json).images.length,1);assert.equal(h.backend.calls.length,1);
+ release({outcome:'success',finalText:'done'});await h.bridge.idle();assert.equal(h.backend.calls.length,2);
+});
+test('Q03: preparing image cannot be overtaken by a later text',async t=>{
+ const h=harness(t);let release!:(images:ImageRef[])=>void,first=true;const held=new Promise<ImageRef[]>(resolve=>{release=resolve;});
+ h.media.prepare=async()=>{if(first){first=false;return held;}return [];};
+ await h.bridge.accept(fixture('first'));await h.bridge.accept(fixture('second'));await new Promise(r=>setTimeout(r,30));assert.equal(h.backend.calls.length,0);
+ release([]);await h.bridge.idle();assert.deepEqual(h.backend.calls.map(x=>x.text),['first','second']);
+});
+test('Q06: commands cannot cancel or retrieve another conversation task',async t=>{
+ const h=harness(t),a=await h.bridge.accept(fixture('private','one'));await h.bridge.idle();
+ for(const cmd of ['/cancel','/result']){const r=await h.bridge.accept(fixture(`${cmd} ${a.taskId}`,'two'));assert.equal(h.store.get(r.taskId!).status,'failed');assert.equal(h.store.get(r.taskId!).error_code,'TASK_NOT_FOUND');}
+ assert.equal(h.backend.calls.length,1);
+});
+test('D07/R05: explicit result retrieval is delivery only, never Agent execution',async t=>{
+ const h=harness(t),r=await h.bridge.accept(fixture('answer'));await h.bridge.idle();await h.bridge.accept(fixture(`/result ${r.taskId}`));
+ const pump=new OutboxPump(h.store,h.channel,h.c.reply);while(await pump.tick()){}
+ assert.equal(h.backend.calls.length,1);assert.equal(h.channel.sent.length,2);
+});
+test('E2E Codex: complete local transport/store/backend/reply and restart resume',async t=>{
+ const h=setup(t),out=output();let service=await openService(h.c,out.stream);h.cleanups.push(()=>service.stop());
+ const first=await service.accept(fixture('nonce 1280'));await service.settle();assert.equal(service.store.get(first.taskId!).status,'succeeded');await service.stop();
+ service=await openService(h.c,out.stream);const second=await service.accept(fixture('follow up'));await service.settle();
+ const answer=JSON.parse(service.store.get(second.taskId!).result_text!);assert.deepEqual(answer.history,['nonce 1280','follow up']);assert(out.values().some(v=>v.type==='result'));
+});
+test('E2E Codex: cancelled task blocks new execution and /new cannot bypass review',async t=>{
+ const h=setup(t,'codex','hang'),out=output(),service=await openService(h.c,out.stream);h.cleanups.push(()=>service.stop());
+ const task=await service.accept(fixture('long task'));await eventually(()=>existsSync(path.join(h.workspace,'side-effect.txt')));
+ await service.accept(fixture(`/cancel ${task.taskId}`));await service.settle();assert.equal(service.store.get(task.taskId!).status,'interrupted');assert(service.store.blocked());
+ const next=await service.accept(fixture('do more'));assert.equal(next.rejected,'WORKSPACE_BLOCKED');
+ const fresh=await service.accept(fixture('/new'));assert.equal(service.store.get(fresh.taskId!).status,'failed');assert.equal(service.store.get(fresh.taskId!).error_code,'WORKSPACE_BLOCKED');
+});

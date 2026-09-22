@@ -1,27 +1,18 @@
-// Fault-injection writer. Parent SIGKILLs this actual process after READY.
-import {readFileSync,writeFileSync,mkdirSync,utimesSync} from 'node:fs';
+// Tests kill this process at an explicitly committed/transactional boundary.
+import fs from 'node:fs';
 import path from 'node:path';
-import {Store} from '../../dist/src/store.js';
-import {normalize} from '../../dist/src/wecom.js';
-const [configFile,stage]=process.argv.slice(2);const c=JSON.parse(readFileSync(configFile,'utf8'));
-const store=new Store(path.join(c.stateRoot,'bridge.sqlite'),c);
-const frame={cmd:'aibot_msg_callback',headers:{req_id:'crash-req'},body:{msgid:'crash-message',aibotid:'fixture-bot',chattype:'single',from:{userid:'owner'},msgtype:'text',text:{content:'crash task'}}};
-const job=store.reserve(normalize(frame,c,'fixture-bot'),'agent').job;
-writeFileSync(path.join(c.stateRoot,'crash-info.json'),JSON.stringify({id:job.task_id,frame}));
-if(stage==='preparing'){
- const dir=path.join(c.stateRoot,'media',job.task_id);mkdirSync(dir,{recursive:true});writeFileSync(path.join(dir,'input.part'),'unfinished');utimesSync(dir,new Date(0),new Date(0));
-}else{
- store.prepared(job.task_id,[]);
- if(stage!=='queued'){
-  store.claim();writeFileSync(path.join(c.workspace.path,'changed.txt'),'SIDE EFFECT ALREADY HAPPENED');
-  if(stage==='transaction'){
-   // Deliberately crash halfway through the same result/outbox transaction boundary.
-   store.db.exec('BEGIN IMMEDIATE');
-   store.db.prepare("UPDATE jobs SET status='succeeded',result_text='uncommitted answer' WHERE task_id=?").run(job.task_id);
-  }else if(stage==='pending'||stage==='sending'){
-   store.complete(job.task_id,'succeeded','durable answer');
-   if(stage==='sending')store.claimDelivery(Date.now());
-  }
- }
-}
+import { Store } from '../../dist/src/store.js';
+import { loadConfig } from '../../dist/src/config.js';
+import { normalize } from '../../dist/src/local.js';
+const [configFile,stage]=process.argv.slice(2),c=loadConfig(configFile);
+const s=new Store(path.join(c.stateRoot,'bridge.sqlite'),c);
+const frame={id:'crash-request',session:'default',text:'crash task',images:[]};
+const job=s.reserve(normalize(frame,c,'local:codex'),'agent').job;
+fs.writeFileSync(path.join(c.stateRoot,'crash-info.json'),JSON.stringify({id:job.task_id,frame}));
+if(stage==='preparing') {const dir=path.join(c.stateRoot,'media',job.task_id);fs.mkdirSync(dir,{recursive:true});fs.writeFileSync(path.join(dir,'orphan.part'),'partial');}
+else {s.prepared(job.task_id,[]);if(stage!=='queued')s.claim();}
+if(stage==='running')fs.writeFileSync(path.join(c.workspace.path,'changed.txt'),'SIDE EFFECT ALREADY HAPPENED');
+if(stage==='pending'||stage==='sending')s.complete(job.task_id,'succeeded','durable answer');
+if(stage==='sending')s.claimDelivery(Date.now());
+if(stage==='transaction') {s.db.exec('BEGIN IMMEDIATE');s.db.prepare("UPDATE jobs SET status='succeeded',result_text='not committed' WHERE task_id=?").run(job.task_id);}
 process.stdout.write('READY\n');setInterval(()=>{},1000);

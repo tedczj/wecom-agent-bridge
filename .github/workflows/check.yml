@@ -1,0 +1,33 @@
+name: Offline contract and recovery tests
+on:
+  push:
+    branches: [dev]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.16.0'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run check
+      - name: Live smoke must require an explicit opt-in
+        shell: bash
+        run: |
+          if npm run smoke:codex; then
+            echo 'Live smoke ran without --live' >&2
+            exit 1
+          fi

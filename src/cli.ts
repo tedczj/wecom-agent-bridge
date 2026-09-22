@@ -1,89 +1,131 @@
+import { randomUUID } from 'node:crypto';
+import { existsSync, lstatSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import path from 'node:path';
-import { existsSync, readFileSync, accessSync, constants } from 'node:fs';
-import { loadConfig, preparePaths } from './config.ts';
-import { configArg } from './main.ts';
+import { pathToFileURL } from 'node:url';
+import { loadConfig, preparePaths, type Config } from './config.ts';
+import { openService, type LocalService } from './main.ts';
 import { Store } from './store.ts';
+import { JsonlFramer } from './rpc-jsonl.ts';
 import { acquireLock, clearStaleLock, processAlive } from './fsutil.ts';
-import { errorCode, invariant } from './errors.ts';
-async function cli(): Promise<void> {
-    const args = process.argv.slice(2);
-    const cmd = args[0];
-    const c = loadConfig(configArg(args));
-    preparePaths(c);
-    const dbFile = path.join(c.stateRoot, 'bridge.sqlite');
-    if (cmd === 'recover') {
-        const i = args.indexOf('--ack-workspace');
-        invariant(i >= 0 && args[i + 1] === c.workspace.id, 'RECOVERY_ACK_REQUIRED');
-        invariant(args.includes('--processes-stopped') && args.includes('--diff-reviewed'), 'RECOVERY_REVIEW_REQUIRED');
-        const marker = path.join(c.stateRoot, 'agent-process.json');
-        if (existsSync(marker)) {
-            const pid = JSON.parse(readFileSync(marker, 'utf8')).pid;
-            invariant(Number.isSafeInteger(pid) && pid > 0 && !processAlive(-pid), 'AGENT_PROCESS_GROUP_STILL_ALIVE');
-        }
-        clearStaleLock(c.stateRoot);
-        const unlock = acquireLock(c.stateRoot);
-        try {
-            const store = new Store(dbFile, c);
-            try {
-                store.recover();
-                const reviewed = store.review();
-                console.log(JSON.stringify({ reviewed, rerun: false, notice: '旧会话仍为 tainted；请用 /new 开始新会话。' }));
-            }
-            finally {
-                store.close();
-            }
-        }
-        finally {
-            unlock();
-        }
-        return;
+import { errorCode, invariant, log } from './errors.ts';
+const help = `Local Agent Bridge (Codex / Pi)
+Usage:
+  node dist/src/cli.js run --config FILE --message TEXT [--image FILE ...] [--session NAME] [--id ID]
+  node dist/src/cli.js run --config FILE --stdin [--image FILE ...] [--session NAME] [--id ID]
+  node dist/src/cli.js serve --config FILE
+  node dist/src/cli.js status --config FILE
+  node dist/src/cli.js result --config FILE --task ID
+  node dist/src/cli.js review --config FILE --acknowledge-side-effects
+serve: one JSON object per line: {"id":"request-1","session":"default","text":"...","images":[]}
+Control text: /help /status /new /cancel [taskId] /result taskId [part]
+run uses a fresh process but resumes the selected persisted conversation; Ctrl-C cancels.
+Exit codes: 0 success, 1 rejected/failed, 2 interrupted/nonterminal/undelivered, 130 signal.
+`;
+interface Args {command: string; options: Map<string,string[]>; flags: Set<string>}
+export function parseArgs(args: string[]): Args {
+  const [command = 'help', ...rest] = args;
+  invariant(['help','--help','run','serve','status','result','review'].includes(command), 'CLI_COMMAND');
+  const options = new Map<string,string[]>(), flags = new Set<string>();
+  const allowed = command === 'run' ? ['--config','--message','--image','--session','--id']
+    : command === 'result' ? ['--config','--task'] : ['--config'];
+  for (let i = 0; i < rest.length; i++) {
+    const k = rest[i]!;
+    if ((k === '--stdin' && command === 'run') || (k === '--acknowledge-side-effects' && command === 'review')) {
+      invariant(!flags.has(k), 'CLI_DUPLICATE'); flags.add(k); continue;
     }
-    if (cmd === 'status') {
-        if (!existsSync(dbFile)) {
-            console.log(JSON.stringify({ initialized: false }));
-            return;
-        }
-        const store = new Store(dbFile, c, true);
-        try {
-            console.log(JSON.stringify(store.summary(), null, 2));
-        }
-        finally {
-            store.close();
-        }
-        return;
-    }
-    invariant(cmd === 'doctor', 'UNKNOWN_CLI_COMMAND');
-    const checks: Record<string, unknown> = { configValid: true, storeWritable: false, singleInstance: true, wecomAuthenticated: 'unverified', piRpcReady: 'unverified', sessionRestore: 'unverified', imagesNative: 'unverified', workspaceIsolation: 'unverified', workspaceBlocked: false, mediaHostsReviewed: c.wecom.mediaAllowedHosts.length > 0 };
-    try {
-        accessSync(c.stateRoot, constants.W_OK);
-        checks.storeWritable = true;
-    }
-    catch { }
-    const lock = path.join(c.stateRoot, 'instance.lock');
-    if (existsSync(lock)) {
-        const pid = JSON.parse(readFileSync(lock, 'utf8')).pid;
-        checks.singleInstance = Number.isSafeInteger(pid) && pid > 0 && processAlive(pid);
-        const health = path.join(c.stateRoot, 'health.json');
-        if (checks.singleInstance && existsSync(health)) {
-            const h = JSON.parse(readFileSync(health, 'utf8'));
-            if (h.pid === pid && h.workspaceId === c.workspace.id && Date.now() - h.writtenAt < 10000)
-                for (const k of ['wecomAuthenticated', 'piRpcReady', 'sessionRestore', 'imagesNative', 'workspaceIsolation', 'workspaceBlocked'])
-                    checks[k] = h[k] ?? 'unverified';
-        }
-    }
-    if (existsSync(dbFile)) {
-        const store = new Store(dbFile, c, true);
-        try {
-            checks.workspaceBlocked = store.blocked();
-        }
-        finally {
-            store.close();
-        }
-    }
-    const offline = checks.configValid === true && checks.storeWritable === true && checks.singleInstance === true && checks.workspaceBlocked === false;
-    console.log(JSON.stringify({ mode: args.includes('--offline') ? 'offline' : 'readiness', checks, notice: 'offline 通过不代表真实企微/模型/隔离已验证。doctor 不建立 WebSocket，也不启动 Agent。' }, null, 2));
-    // Native vision/isolation need explicit live/manual evidence; never infer from configuration.
-    if (!offline || (!args.includes('--offline') && ['wecomAuthenticated', 'piRpcReady', 'sessionRestore', 'imagesNative', 'workspaceIsolation'].some(k => checks[k] !== true)))
-        process.exitCode = 2;
+    invariant(allowed.includes(k) && rest[i+1] !== undefined, 'CLI_ARGUMENT');
+    const v = rest[++i]!;
+    invariant(k === '--image' || !options.has(k), 'CLI_DUPLICATE');
+    options.set(k, [...(options.get(k) ?? []), v]);
+  }
+  return {command, options, flags};
 }
-void cli().catch(e => { console.error(JSON.stringify({ code: errorCode(e) })); process.exitCode = 1; });
+function inspect(c: Config, task?: string): unknown {
+  c.workspace.path = realpathSync(c.workspace.path);
+  const file = path.join(c.stateRoot, 'bridge.sqlite');
+  invariant(existsSync(file), 'STATE_NOT_INITIALIZED');
+  const store = new Store(file, c, true);
+  try {
+    if (!task) return store.summary();
+    invariant(/^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(task), 'TASK_ID_INVALID');
+    const job = store.get(task);
+    return {taskId:job.task_id, status:job.status, text:job.result_text, errorCode:job.error_code};
+  } finally { store.close(); }
+}
+export function review(c: Config, acknowledged: boolean): number {
+  invariant(acknowledged, 'REVIEW_ACK_REQUIRED'); preparePaths(c);
+  clearStaleLock(c.stateRoot);
+  const unlock = acquireLock(c.stateRoot), marker = path.join(c.stateRoot, 'agent-process.json');
+  try {
+    if (existsSync(marker)) {
+      invariant(!lstatSync(marker).isSymbolicLink(), 'UNSAFE_PROCESS_MARKER');
+      const data = JSON.parse(readFileSync(marker, 'utf8'));
+      invariant(Number.isSafeInteger(data.pid) && data.pid > 0 && !processAlive(data.pid), 'AGENT_STILL_RUNNING');
+      let groupAlive = false;
+      try { process.kill(-data.pid, 0); groupAlive = true; }
+      catch (e) { invariant((e as NodeJS.ErrnoException).code === 'ESRCH', 'AGENT_STATE_UNKNOWN'); }
+      invariant(!groupAlive, 'AGENT_STILL_RUNNING');
+      rmSync(marker);
+    }
+    const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c);
+    try { store.recover(); return store.review(); } finally { store.close(); }
+  } finally { unlock(); }
+}
+export async function runCli(argv = process.argv.slice(2)): Promise<number> {
+  const args = parseArgs(argv);
+  if (args.command === 'help' || args.command === '--help') { process.stdout.write(help); return 0; }
+  const one = (k: string) => args.options.get(k)?.[0];
+  invariant(one('--config'), 'CONFIG_ARGUMENT_REQUIRED');
+  const c = loadConfig(one('--config')!);
+  if (args.command === 'status' || args.command === 'result') {
+    if (args.command === 'result') invariant(one('--task'), 'TASK_ID_INVALID');
+    process.stdout.write(JSON.stringify(inspect(c, one('--task'))) + '\n'); return 0;
+  }
+  if (args.command === 'review') { process.stdout.write(JSON.stringify({reviewed:review(c, args.flags.has('--acknowledge-side-effects'))}) + '\n'); return 0; }
+  let service: LocalService | undefined, signalSeen = false;
+  const shutdown = () => {
+    signalSeen = true;
+    // Stop intake, then stop the actual Agent rather than merely returning from the caller.
+    process.stdin.destroy();
+    void service?.bridge.stop().catch(e => log('shutdown.failed', {code:errorCode(e)}));
+  };
+  process.once('SIGINT', shutdown); process.once('SIGTERM', shutdown);
+  try {
+    service = await openService(c, process.stdout);
+    if (args.command === 'run') {
+      invariant(!(one('--message') !== undefined && args.flags.has('--stdin')), 'CLI_PROMPT_CONFLICT');
+      let text = one('--message') ?? '';
+      if (args.flags.has('--stdin')) {
+        const chunks: Buffer[] = []; let bytes = 0;
+        for await (const chunk of process.stdin) {
+          const b = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk); bytes += b.length;
+          invariant(bytes <= 65536, 'INPUT_TEXT'); chunks.push(b);
+        }
+        text = new TextDecoder('utf-8', {fatal:true}).decode(Buffer.concat(chunks));
+      }
+      const accepted = await service.accept({id:one('--id') ?? randomUUID(), session:one('--session') ?? 'default', text,
+        images:(args.options.get('--image') ?? []).map(file => path.resolve(file))});
+      if (accepted.rejected || !accepted.taskId) return 1;
+      await service.settle(); if (signalSeen) return 130;
+      const job = service.store.get(accepted.taskId);
+      const undelivered = !!service.store.db.prepare("SELECT 1 FROM outbox WHERE task_id=? AND state!='sent'").get(job.task_id);
+      await service.channel.write({type:'status', taskId:job.task_id, status:job.status, duplicate:accepted.duplicate, errorCode:job.error_code, undelivered});
+      return job.status === 'succeeded' && !undelivered ? 0 : ['failed','cancelled','timed_out'].includes(job.status) ? 1 : 2;
+    }
+    let batch: Record<string,unknown>[] = [];
+    const framer = new JsonlFramer(c.local.maxInputBytes, value => batch.push(value));
+    for await (const chunk of process.stdin) {
+      framer.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      for (const frame of batch) { if (signalSeen) break; await service.accept(frame); }
+      batch = []; if (signalSeen) break;
+    }
+    if (!signalSeen) { framer.end(); await service.settle(); }
+    return signalSeen ? 130 : 0;
+  } finally {
+    process.removeListener('SIGINT', shutdown); process.removeListener('SIGTERM', shutdown);
+    await service?.stop();
+  }
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  runCli().then(code => { process.exitCode = code; }).catch(e => { log('cli.failed', {code:errorCode(e)}); process.exitCode = 1; });
+}

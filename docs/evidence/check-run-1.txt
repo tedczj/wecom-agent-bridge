@@ -1,0 +1,603 @@
+
+> local-agent-bridge@0.2.0 check
+> npm run typecheck && npm test
+
+
+> local-agent-bridge@0.2.0 typecheck
+> tsc --noEmit -p tsconfig.json
+
+
+> local-agent-bridge@0.2.0 test
+> npm run build && node --test dist/tests/unit/*.test.js dist/tests/contract/*.test.js dist/tests/e2e/*.test.js
+
+
+> local-agent-bridge@0.2.0 build
+> tsc -p tsconfig.json
+
+TAP version 13
+# (node:5507) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: C01/B02: actual exec child, final result, persistent thread and explicit resume
+ok 1 - C01/B02: actual exec child, final result, persistent thread and explicit resume
+  ---
+  duration_ms: 112.571385
+  type: 'test'
+  ...
+# Subtest: C02/B01: real image bytes reach the exec child through --image
+ok 2 - C02/B01: real image bytes reach the exec child through --image
+  ---
+  duration_ms: 79.155054
+  type: 'test'
+  ...
+# Subtest: C03: stored-image tampering fails before process creation
+ok 3 - C03: stored-image tampering fails before process creation
+  ---
+  duration_ms: 14.155675
+  type: 'test'
+  ...
+# Subtest: C04/B03: no saved reference creates a distinct thread
+ok 4 - C04/B03: no saved reference creates a distinct thread
+  ---
+  duration_ms: 86.476003
+  type: 'test'
+  ...
+# Subtest: C05: final event alone does not settle before the child exits
+ok 5 - C05: final event alone does not settle before the child exits
+  ---
+  duration_ms: 209.771114
+  type: 'test'
+  ...
+# Subtest: C06: ack-only cannot be reported as successful
+ok 6 - C06: ack-only cannot be reported as successful
+  ---
+  duration_ms: 41.262487
+  type: 'test'
+  ...
+# Subtest: C06: exit-error cannot be reported as successful
+ok 7 - C06: exit-error cannot be reported as successful
+  ---
+  duration_ms: 41.304761
+  type: 'test'
+  ...
+# Subtest: C06: malformed cannot be reported as successful
+ok 8 - C06: malformed cannot be reported as successful
+  ---
+  duration_ms: 47.815116
+  type: 'test'
+  ...
+# Subtest: C06: truncated cannot be reported as successful
+ok 9 - C06: truncated cannot be reported as successful
+  ---
+  duration_ms: 46.483845
+  type: 'test'
+  ...
+# Subtest: C06: bad-order cannot be reported as successful
+ok 10 - C06: bad-order cannot be reported as successful
+  ---
+  duration_ms: 52.47479
+  type: 'test'
+  ...
+# Subtest: C06: duplicate-terminal cannot be reported as successful
+ok 11 - C06: duplicate-terminal cannot be reported as successful
+  ---
+  duration_ms: 51.407714
+  type: 'test'
+  ...
+# Subtest: C07/P08: oversized output is bounded and the process is cleaned up
+ok 12 - C07/P08: oversized output is bounded and the process is cleaned up
+  ---
+  duration_ms: 47.306772
+  type: 'test'
+  ...
+# Subtest: C08/B04/D08: failed turn and auth failure return codes, never raw error/secret
+ok 13 - C08/B04/D08: failed turn and auth failure return codes, never raw error/secret
+  ---
+  duration_ms: 79.85411
+  type: 'test'
+  ...
+# Subtest: C09/B04: empty final is a failure; reasoning/tool outputs are not answers
+ok 14 - C09/B04: empty final is a failure; reasoning/tool outputs are not answers
+  ---
+  duration_ms: 54.399262
+  type: 'test'
+  ...
+# Subtest: C10: resume mismatch blocks, without saving the wrong reference
+ok 15 - C10: resume mismatch blocks, without saving the wrong reference
+  ---
+  duration_ms: 48.492544
+  type: 'test'
+  ...
+# Subtest: C11/B06: thread persistence failure is uncertain, not an automatic retry
+ok 16 - C11/B06: thread persistence failure is uncertain, not an automatic retry
+  ---
+  duration_ms: 53.330786
+  type: 'test'
+  ...
+# Subtest: C12/B05: cancellation stops real writes and conservatively blocks uncertain work
+ok 17 - C12/B05: cancellation stops real writes and conservatively blocks uncertain work
+  ---
+  duration_ms: 156.332065
+  type: 'test'
+  ...
+# Subtest: C13/B05: SIGTERM-ignoring child is escalated; stop() waits for cleanup
+ok 18 - C13/B05: SIGTERM-ignoring child is escalated; stop() waits for cleanup
+  ---
+  duration_ms: 222.162048
+  type: 'test'
+  ...
+# Subtest: C14/B05: owned grandchild writer stops or cleanup remains explicitly unknown
+ok 19 - C14/B05: owned grandchild writer stops or cleanup remains explicitly unknown
+  ---
+  duration_ms: 387.532248
+  type: 'test'
+  ...
+# Subtest: C15: startup and task timeouts are finite and never pretend the task succeeded
+ok 20 - C15: startup and task timeouts are finite and never pretend the task succeeded
+  ---
+  duration_ms: 92.721309
+  type: 'test'
+  ...
+# Subtest: C16: pre-cancelled input and unavailable executable do not launch a child
+ok 21 - C16: pre-cancelled input and unavailable executable do not launch a child
+  ---
+  duration_ms: 2.565586
+  type: 'test'
+  ...
+# Subtest: C17: prompt injection stays stdin data; no shell interpolation, no parent secret
+ok 22 - C17: prompt injection stays stdin data; no shell interpolation, no parent secret
+  ---
+  duration_ms: 50.058026
+  type: 'test'
+  ...
+# Subtest: C18: overlapping run calls are rejected rather than corrupting ownership
+ok 23 - C18: overlapping run calls are rejected rather than corrupting ownership
+  ---
+  duration_ms: 1.803971
+  type: 'test'
+  ...
+# (node:5508) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Pi B01/B02: native image bytes and persisted session resume
+ok 24 - Pi B01/B02: native image bytes and persisted session resume
+  ---
+  duration_ms: 148.241456
+  type: 'test'
+  ...
+# Subtest: Pi P03/P04/P09: delayed never completes on ACK, agent_end or stale events
+ok 25 - Pi P03/P04/P09: delayed never completes on ACK, agent_end or stale events
+  ---
+  duration_ms: 187.808916
+  type: 'test'
+  ...
+# Subtest: Pi P03/P04/P09: retry never completes on ACK, agent_end or stale events
+ok 26 - Pi P03/P04/P09: retry never completes on ACK, agent_end or stale events
+  ---
+  duration_ms: 167.992712
+  type: 'test'
+  ...
+# Subtest: Pi P03/P04/P09: stale never completes on ACK, agent_end or stale events
+ok 27 - Pi P03/P04/P09: stale never completes on ACK, agent_end or stale events
+  ---
+  duration_ms: 62.26283
+  type: 'test'
+  ...
+# Subtest: Pi P05/P06/P07/B04: error
+ok 28 - Pi P05/P06/P07/B04: error
+  ---
+  duration_ms: 57.158379
+  type: 'test'
+  ...
+# Subtest: Pi P05/P06/P07/B04: reject
+ok 29 - Pi P05/P06/P07/B04: reject
+  ---
+  duration_ms: 45.351003
+  type: 'test'
+  ...
+# Subtest: Pi P05/P06/P07/B04: session-cancel
+ok 30 - Pi P05/P06/P07/B04: session-cancel
+  ---
+  duration_ms: 51.707286
+  type: 'test'
+  ...
+# Subtest: Pi P05/P06/P07/B04: empty
+ok 31 - Pi P05/P06/P07/B04: empty
+  ---
+  duration_ms: 61.677491
+  type: 'test'
+  ...
+# Subtest: Pi P08/P10: exit is not successful or automatically approved
+ok 32 - Pi P08/P10: exit is not successful or automatically approved
+  ---
+  duration_ms: 37.192661
+  type: 'test'
+  ...
+# Subtest: Pi P08/P10: malformed is not successful or automatically approved
+ok 33 - Pi P08/P10: malformed is not successful or automatically approved
+  ---
+  duration_ms: 50.803608
+  type: 'test'
+  ...
+# Subtest: Pi P08/P10: ui is not successful or automatically approved
+ok 34 - Pi P08/P10: ui is not successful or automatically approved
+  ---
+  duration_ms: 53.41324
+  type: 'test'
+  ...
+# Subtest: Pi P12/B06: missing historical file fails; unsaved fresh ref allowed; persistence failure prevents prompt
+ok 35 - Pi P12/B06: missing historical file fails; unsaved fresh ref allowed; persistence failure prevents prompt
+  ---
+  duration_ms: 207.037176
+  type: 'test'
+  ...
+# Subtest: Pi B05: cancellation hang is settled or conservatively interrupted
+ok 36 - Pi B05: cancellation hang is settled or conservatively interrupted
+  ---
+  duration_ms: 55.433998
+  type: 'test'
+  ...
+# Subtest: Pi B05: cancellation ignore-abort is settled or conservatively interrupted
+ok 37 - Pi B05: cancellation ignore-abort is settled or conservatively interrupted
+  ---
+  duration_ms: 213.956655
+  type: 'test'
+  ...
+# Subtest: Pi marker belonging to another process is never removed
+ok 38 - Pi marker belonging to another process is never removed
+  ---
+  duration_ms: 1.611582
+  type: 'test'
+  ...
+# (node:5509) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# {"event":"task.finished","taskId":"780a99db-b078-4711-92cb-25b51fae0fef","state":"succeeded"}
+# {"event":"task.finished","taskId":"f332470f-900e-4f6b-a265-0dda930ff51e","state":"succeeded"}
+# {"event":"task.finished","taskId":"faa65ed6-a2ac-4c02-8751-7b0f85a5bff0","state":"succeeded"}
+# Subtest: N02/Q01: concurrent duplicate submissions execute once and survive store replay
+ok 39 - N02/Q01: concurrent duplicate submissions execute once and survive store replay
+  ---
+  duration_ms: 11.069137
+  type: 'test'
+  ...
+# Subtest: Q05/B03: duplicate /new increments generation once and never invokes Agent
+ok 40 - Q05/B03: duplicate /new increments generation once and never invokes Agent
+  ---
+  duration_ms: 7.442375
+  type: 'test'
+  ...
+# Subtest: N08: unknown command fails explicitly without running Agent
+ok 41 - N08: unknown command fails explicitly without running Agent
+  ---
+  duration_ms: 4.0981
+  type: 'test'
+  ...
+# {"event":"task.finished","taskId":"5b4cf1cd-b76c-49f8-920c-952b908a96a4","state":"succeeded"}
+# {"event":"task.finished","taskId":"01f59d86-2a39-4842-8ddd-b53dc15f799e","state":"succeeded"}
+# Subtest: Q08/Q04: control commands do not wait for Agent; rejected tasks start no media work
+ok 42 - Q08/Q04: control commands do not wait for Agent; rejected tasks start no media work
+  ---
+  duration_ms: 17.736878
+  type: 'test'
+  ...
+# {"event":"task.finished","taskId":"e195a2ed-8937-4fbc-ba2b-8e313c55f405","state":"succeeded"}
+# {"event":"task.finished","taskId":"61267fcc-052d-4c25-add7-92011c6c549e","state":"succeeded"}
+# Subtest: M10: later image is persisted while previous Agent turn is still running
+ok 43 - M10: later image is persisted while previous Agent turn is still running
+  ---
+  duration_ms: 32.850424
+  type: 'test'
+  ...
+# {"event":"task.finished","taskId":"f8bb7e57-1c0f-4519-a52e-06d964ecd454","state":"succeeded"}
+# {"event":"task.finished","taskId":"01434b0a-ae7b-420f-bc40-1fb6ae56395f","state":"succeeded"}
+# {"event":"task.finished","taskId":"f2888b9d-67c0-466b-894c-e8b8158b590f","state":"succeeded"}
+# {"event":"task.finished","taskId":"0cb78e91-8e66-446b-bb93-d820862874ef","state":"succeeded"}
+# Subtest: Q03: preparing image cannot be overtaken by a later text
+ok 44 - Q03: preparing image cannot be overtaken by a later text
+  ---
+  duration_ms: 35.925035
+  type: 'test'
+  ...
+# Subtest: Q06: commands cannot cancel or retrieve another conversation task
+ok 45 - Q06: commands cannot cancel or retrieve another conversation task
+  ---
+  duration_ms: 5.262229
+  type: 'test'
+  ...
+# Subtest: D07/R05: explicit result retrieval is delivery only, never Agent execution
+ok 46 - D07/R05: explicit result retrieval is delivery only, never Agent execution
+  ---
+  duration_ms: 5.085483
+  type: 'test'
+  ...
+# {"event":"task.finished","taskId":"e9f82128-b69d-4541-b24b-16d3bb0f7aa7","state":"succeeded"}
+# {"event":"task.finished","taskId":"613840da-9c0a-47b8-b212-37ed4969b38d","state":"succeeded"}
+# Subtest: E2E Codex: complete local transport/store/backend/reply and restart resume
+ok 47 - E2E Codex: complete local transport/store/backend/reply and restart resume
+  ---
+  duration_ms: 133.173354
+  type: 'test'
+  ...
+# {"event":"task.finished","taskId":"5fa2c816-b35a-4b9c-bf9c-ad713a5ebd88","state":"interrupted"}
+# Subtest: E2E Codex: cancelled task blocks new execution and /new cannot bypass review
+ok 48 - E2E Codex: cancelled task blocks new execution and /new cannot bypass review
+  ---
+  duration_ms: 62.375665
+  type: 'test'
+  ...
+# (node:5677) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: CLI01: run, resume, duplicate id, status and result work without network credentials
+ok 49 - CLI01: run, resume, duplicate id, status and result work without network credentials
+  ---
+  duration_ms: 526.603977
+  type: 'test'
+  ...
+# Subtest: CLI02: local image-only input reaches selected Codex executable
+ok 50 - CLI02: local image-only input reaches selected Codex executable
+  ---
+  duration_ms: 131.612542
+  type: 'test'
+  ...
+# Subtest: CLI03: serve consumes JSONL and routes results to correct local sessions
+ok 51 - CLI03: serve consumes JSONL and routes results to correct local sessions
+  ---
+  duration_ms: 179.327618
+  type: 'test'
+  ...
+# Subtest: CLI04: malformed/truncated JSONL, duplicate flags, and missing configuration fail
+ok 52 - CLI04: malformed/truncated JSONL, duplicate flags, and missing configuration fail
+  ---
+  duration_ms: 215.59649
+  type: 'test'
+  ...
+# Subtest: CLI05: SIGINT stops actual writes, exits 130, persists interrupted, requires manual review
+ok 53 - CLI05: SIGINT stops actual writes, exits 130, persists interrupted, requires manual review
+  ---
+  duration_ms: 578.561269
+  type: 'test'
+  ...
+# Subtest: CLI06: Pi selection uses RPC, without any Codex executable
+ok 54 - CLI06: Pi selection uses RPC, without any Codex executable
+  ---
+  duration_ms: 142.501523
+  type: 'test'
+  ...
+# (node:6180) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: R01: SIGKILL preparing fails safely and removes orphan partial files
+ok 55 - R01: SIGKILL preparing fails safely and removes orphan partial files
+  ---
+  duration_ms: 52.286786
+  type: 'test'
+  ...
+# {"event":"task.finished","taskId":"c9020d99-7a9a-4229-b7d3-7db3f7d21590","state":"succeeded"}
+# Subtest: R02: SIGKILL queued executes once after restart; replay remains deduplicated
+ok 56 - R02: SIGKILL queued executes once after restart; replay remains deduplicated
+  ---
+  duration_ms: 47.64806
+  type: 'test'
+  ...
+# Subtest: R03: SIGKILL after side effects blocks workspace; no automatic rerun or reset
+ok 57 - R03: SIGKILL after side effects blocks workspace; no automatic rerun or reset
+  ---
+  duration_ms: 43.899235
+  type: 'test'
+  ...
+# Subtest: R04: SIGKILL inside transaction rolls back result and terminal status
+ok 58 - R04: SIGKILL inside transaction rolls back result and terminal status
+  ---
+  duration_ms: 41.998102
+  type: 'test'
+  ...
+# Subtest: R05: SIGKILL after result commit recovers delivery only, never execution
+ok 59 - R05: SIGKILL after result commit recovers delivery only, never execution
+  ---
+  duration_ms: 48.641612
+  type: 'test'
+  ...
+# Subtest: R06: SIGKILL while sending becomes unknown; /result does not run Agent
+ok 60 - R06: SIGKILL while sending becomes unknown; /result does not run Agent
+  ---
+  duration_ms: 54.08882
+  type: 'test'
+  ...
+# (node:6319) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: N01/N04: local identity is operator-bound; request IDs must be supplied
+ok 61 - N01/N04: local identity is operator-bound; request IDs must be supplied
+  ---
+  duration_ms: 6.424906
+  type: 'test'
+  ...
+# Subtest: N03/N06: remote identities and quote/mixed fields cannot be injected
+ok 62 - N03/N06: remote identities and quote/mixed fields cannot be injected
+  ---
+  duration_ms: 1.699765
+  type: 'test'
+  ...
+# Subtest: N05/N07: local conversations are isolated; images preserve order
+ok 63 - N05/N07: local conversations are isolated; images preserve order
+  ---
+  duration_ms: 3.274562
+  type: 'test'
+  ...
+# Subtest: M04: URL images and command attachments are rejected, with no downloader
+ok 64 - M04: URL images and command attachments are rejected, with no downloader
+  ---
+  duration_ms: 1.499253
+  type: 'test'
+  ...
+# Subtest: P01/P02: bytewise UTF-8, CRLF and embedded U+2028/U+2029 preserve frames
+ok 65 - P01/P02: bytewise UTF-8, CRLF and embedded U+2028/U+2029 preserve frames
+  ---
+  duration_ms: 1.006813
+  type: 'test'
+  ...
+# Subtest: P08: invalid UTF-8/JSON, oversized and truncated frames fail closed
+ok 66 - P08: invalid UTF-8/JSON, oversized and truncated frames fail closed
+  ---
+  duration_ms: 0.583788
+  type: 'test'
+  ...
+# Subtest: P11: inherited process credentials and injection environments are excluded
+ok 67 - P11: inherited process credentials and injection environments are excluded
+  ---
+  duration_ms: 1.585292
+  type: 'test'
+  ...
+# Subtest: config: removed transport keys and unsafe Codex options cannot silently activate
+ok 68 - config: removed transport keys and unsafe Codex options cannot silently activate
+  ---
+  duration_ms: 1.259713
+  type: 'test'
+  ...
+# Subtest: config: paths, overlap, ranges, backend and concurrency are validated
+ok 69 - config: paths, overlap, ranges, backend and concurrency are validated
+  ---
+  duration_ms: 1.542859
+  type: 'test'
+  ...
+# Subtest: D01/D07: UTF-8 budget, pagination and explicit truncation
+ok 70 - D01/D07: UTF-8 budget, pagination and explicit truncation
+  ---
+  duration_ms: 4.203948
+  type: 'test'
+  ...
+# Subtest: Codex argv: explicit resume ID, images after resume, restrictive flags, stdin prompt
+ok 71 - Codex argv: explicit resume ID, images after resume, restrictive flags, stdin prompt
+  ---
+  duration_ms: 1.745283
+  type: 'test'
+  ...
+# (node:6348) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: M01/B01: copied image bytes, dimensions, format and digest match
+ok 72 - M01/B01: copied image bytes, dimensions, format and digest match
+  ---
+  duration_ms: 18.630352
+  type: 'test'
+  ...
+# Subtest: M03: byte and aggregate budgets reject input and remove partial directories
+ok 73 - M03: byte and aggregate budgets reject input and remove partial directories
+  ---
+  duration_ms: 8.683922
+  type: 'test'
+  ...
+# Subtest: M05: renamed HTML/SVG/executable are not accepted as images
+ok 74 - M05: renamed HTML/SVG/executable are not accepted as images
+  ---
+  duration_ms: 20.150256
+  type: 'test'
+  ...
+# Subtest: M06: per-image and aggregate pixel limits are enforced
+ok 75 - M06: per-image and aggregate pixel limits are enforced
+  ---
+  duration_ms: 24.364419
+  type: 'test'
+  ...
+# Subtest: M06: truncated payload must pass full decode, not merely metadata
+ok 76 - M06: truncated payload must pass full decode, not merely metadata
+  ---
+  duration_ms: 13.535634
+  type: 'test'
+  ...
+# Subtest: M07/M08: missing files, symlinks, escaped references and tampering fail
+ok 77 - M07/M08: missing files, symlinks, escaped references and tampering fail
+  ---
+  duration_ms: 15.131333
+  type: 'test'
+  ...
+# Subtest: M09/R01: active media survives TTL; inactive stale/partial files are removed
+ok 78 - M09/R01: active media survives TTL; inactive stale/partial files are removed
+  ---
+  duration_ms: 4.744251
+  type: 'test'
+  ...
+# Subtest: media: cancellation and count limit are checked before file I/O
+ok 79 - media: cancellation and count limit are checked before file I/O
+  ---
+  duration_ms: 1.767226
+  type: 'test'
+  ...
+# Subtest: M06: valid animated WebP is rejected before Agent input
+ok 80 - M06: valid animated WebP is rejected before Agent input
+  ---
+  duration_ms: 8.178382
+  type: 'test'
+  ...
+# (node:6388) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: schema: old channel database is refused without changing its version
+ok 81 - schema: old channel database is refused without changing its version
+  ---
+  duration_ms: 7.500984
+  type: 'test'
+  ...
+# Subtest: state: workspace identity and backend home cannot silently change
+ok 82 - state: workspace identity and backend home cannot silently change
+  ---
+  duration_ms: 4.447635
+  type: 'test'
+  ...
+# Subtest: Q01: duplicate IDs are durable; ID reuse with different content/session is rejected
+ok 83 - Q01: duplicate IDs are durable; ID reuse with different content/session is rejected
+  ---
+  duration_ms: 6.403655
+  type: 'test'
+  ...
+# Subtest: Q02/Q03: one active task; preparing blocks only later tasks in its own conversation
+ok 84 - Q02/Q03: one active task; preparing blocks only later tasks in its own conversation
+  ---
+  duration_ms: 5.148579
+  type: 'test'
+  ...
+# Subtest: Q06: result/cancel ownership never crosses local conversation boundaries
+ok 85 - Q06: result/cancel ownership never crosses local conversation boundaries
+  ---
+  duration_ms: 4.348405
+  type: 'test'
+  ...
+# Subtest: Q07: cancellation/success race has one terminal status and one outbox set
+ok 86 - Q07: cancellation/success race has one terminal status and one outbox set
+  ---
+  duration_ms: 4.031449
+  type: 'test'
+  ...
+# Subtest: R04: outbox insertion failure rolls back result and terminal status
+ok 87 - R04: outbox insertion failure rolls back result and terminal status
+  ---
+  duration_ms: 2.885326
+  type: 'test'
+  ...
+# Subtest: D03/D05: disconnected delivery remains pending; later success sends exactly once
+ok 88 - D03/D05: disconnected delivery remains pending; later success sends exactly once
+  ---
+  duration_ms: 5.278964
+  type: 'test'
+  ...
+# Subtest: D04: ACK/output uncertainty is never automatically retried
+ok 89 - D04: ACK/output uncertainty is never automatically retried
+  ---
+  duration_ms: 3.102013
+  type: 'test'
+  ...
+# Subtest: D06: retryable failures are finite; permanent failures are never retried
+ok 90 - D06: retryable failures are finite; permanent failures are never retried
+  ---
+  duration_ms: 6.331497
+  type: 'test'
+  ...
+# Subtest: D07: bounded auto-parts retain the complete bounded result for explicit retrieval
+ok 91 - D07: bounded auto-parts retain the complete bounded result for explicit retrieval
+  ---
+  duration_ms: 2.111844
+  type: 'test'
+  ...
+1..91
+# tests 91
+# suites 0
+# pass 91
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2272.485407

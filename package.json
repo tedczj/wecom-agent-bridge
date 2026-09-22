@@ -1,9 +1,9 @@
 {
-  "name": "wecom-agent-bridge",
-  "version": "0.1.0",
+  "name": "local-agent-bridge",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "A small, durable WeCom-to-Pi RPC bridge",
+  "description": "Durable local JSONL bridge for Codex CLI and Pi RPC",
   "engines": {
     "node": ">=22.16.0 <23 || >=24"
   },
@@ -16,13 +16,11 @@
     "test:e2e": "npm run build && node --test dist/tests/e2e/*.test.js",
     "check": "npm run typecheck && npm test",
     "bridge": "npm run build --silent && node dist/src/cli.js",
-    "dev": "npm run build --silent && node dist/src/main.js",
-    "smoke:wecom": "npm run build --silent && node dist/scripts/smoke-wecom.js",
-    "smoke:pi": "npm run build --silent && node dist/scripts/smoke-pi.js"
+    "smoke:codex": "npm run build --silent && node dist/scripts/smoke-agent.js codex",
+    "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi"
   },
   "dependencies": {
-    "sharp": "0.34.1",
-    "@wecom/aibot-node-sdk": "1.0.6"
+    "sharp": "0.34.1"
   },
   "devDependencies": {
     "@types/node": "22.15.33",

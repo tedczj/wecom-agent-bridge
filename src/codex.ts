@@ -5,7 +5,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { type Config, agentEnvironment } from './config.ts';
-import { BackendStateUnknown, BridgeError, errorCode, invariant, record } from './errors.ts';
+import { BackendStateUnknown, BridgeError, errorCode, invariant, record, log } from './errors.ts';
 import { JsonlFramer } from './rpc-jsonl.ts';
 import { readControlled } from './fsutil.ts';
 import { deadline, withSignal } from './async.ts';
@@ -128,7 +128,14 @@ export class CodexBackend implements AgentBackend {
           for (const event of batch) {
             invariant(typeof event.type === 'string', 'CODEX_PROTOCOL');
             if(this.routing && ['item.started','item.completed','item.updated'].includes(event.type)) {
-              const item=record(event.item);invariant(['agent_message','reasoning'].includes(String(item.type)),'ROUTER_TOOL_ATTEMPT');
+              const item=record(event.item);
+              if(item.type==='error') {
+                const message=typeof item.message==='string'?item.message:'';
+                const code=/schema|anyOf|additionalProperties/i.test(message)?'ROUTER_OUTPUT_SCHEMA_REJECTED':/401|403|auth|login|credential/i.test(message)?'ROUTER_AUTH_ERROR':/model|supported/i.test(message)?'ROUTER_MODEL_ERROR':/connect|network|stream|request|retry/i.test(message)?'ROUTER_CONNECTION_ERROR':'ROUTER_AGENT_ERROR';
+                invariant(false,code);
+              }
+              if(!['agent_message','reasoning'].includes(String(item.type)))log('routing.unexpected_item',{state:['command_execution','mcp_tool_call','web_search','file_change','todo_list','error'].includes(String(item.type))?String(item.type):'unknown'});
+              invariant(['agent_message','reasoning'].includes(String(item.type)),'ROUTER_TOOL_ATTEMPT');
             }
             if (event.type === 'thread.started') {
               invariant(!threadSeen && !turnStarted && typeof event.thread_id === 'string' && uuid.test(event.thread_id), 'CODEX_THREAD_ID');

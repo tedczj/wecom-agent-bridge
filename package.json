@@ -18,7 +18,9 @@
     "bridge": "npm run build --silent && node dist/src/cli.js",
     "smoke:codex": "npm run build --silent && node dist/scripts/smoke-agent.js codex",
     "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi",
-    "smoke:routing": "npm run build --silent && node dist/scripts/smoke-routing.js"
+    "smoke:routing": "npm run build --silent && node dist/scripts/smoke-routing.js",
+    "smoke:planner": "npm run build --silent && node dist/scripts/smoke-planner.js",
+    "smoke:authorization": "npm run build --silent && node dist/scripts/smoke-authorization.js"
   },
   "dependencies": {
     "qrcode-terminal": "0.12.0",

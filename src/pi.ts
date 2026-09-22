@@ -89,7 +89,22 @@ export class PiBackend implements AgentBackend {
         ? await withSignal(rpc.request('switch_session', { sessionPath: existing.sessionFile }), signal)
         : await withSignal(rpc.request('new_session'), signal);
       invariant(record(changed.data).cancelled === false, 'SESSION_SWITCH_CANCELLED');
+      const execution=input.routing?.execution;
+      let selected:{provider:string;id:string}|undefined;
+      if(execution?.model) {
+        const available=record((await withSignal(rpc.request('get_available_models'),signal)).data).models;
+        invariant(Array.isArray(available),'PI_MODEL_CATALOG');
+        const norm=(s:string)=>s.toLowerCase().replace(/[\s_-]/g,''),requested=norm(execution.model);
+        const models=available.filter(m=>typeof m?.id==='string' && typeof m?.provider==='string');
+        const exact=models.filter(m=>norm(m.id)===requested || norm(`${m.provider}/${m.id}`)===requested);
+        const matches=exact.length?exact:models.filter(m=>norm(m.id).endsWith(requested));
+        invariant(matches.length,'MODEL_NOT_FOUND');invariant(matches.length===1,'MODEL_AMBIGUOUS');selected=matches[0];
+        await withSignal(rpc.request('set_model',{provider:selected!.provider,modelId:selected!.id}),signal);
+      }
+      if(execution?.reasoning)await withSignal(rpc.request('set_thinking_level',{level:execution.reasoning}),signal);
       const state = record((await withSignal(rpc.request('get_state'), signal)).data); this.idle(state);
+      if(selected)invariant(record(state.model).id===selected.id && record(state.model).provider===selected.provider,'PI_MODEL_MISMATCH');
+      if(execution?.reasoning)invariant(state.thinkingLevel===execution.reasoning,'PI_REASONING_MISMATCH');
       ref = this.ref(state, !!existing && existing.kind === 'pi' && existing.hasHistory !== false);
       if (existing && existing.kind === 'pi') invariant(ref.sessionFile === existing.sessionFile && ref.sessionId === existing.sessionId, 'SESSION_RESTORE_MISMATCH');
       await hooks.persistSession(ref).catch(() => { throw new BridgeError('SESSION_PERSISTENCE'); });
@@ -114,7 +129,7 @@ export class PiBackend implements AgentBackend {
       if (stopReason === 'error') result = { outcome: 'failed', finalText: finalText || '模型执行失败；可能已有部分修改。', errorCode: 'PI_MODEL_ERROR', sessionRef: ref };
       else if (stopReason === 'aborted') result = { outcome: 'cancelled', finalText: '任务已取消；请检查可能已发生的修改。', sessionRef: ref };
       else if (!finalText || stopReason === 'toolUse') result = { outcome: 'failed', finalText: 'Agent 未返回最终文本；请检查工作目录。', errorCode: 'EMPTY_FINAL', sessionRef: ref };
-      else result = { outcome: 'success', finalText, sessionRef: ref };
+      else result = { outcome: 'success', finalText, sessionRef: ref,execution:{backend:'pi',model:typeof record(state.model).id==='string'?`${record(state.model).provider}/${record(state.model).id}`:undefined,reasoning:execution?.reasoning} };
     } catch (e) {
       if (signal.aborted && this.rpc) await deadline(Promise.all([this.rpc.request('abort'), settled]), this.c.agent.cancelGraceMs, 'CANCEL_GRACE_EXPIRED').catch(() => {});
       const code = needsUi ? 'NEEDS_LOCAL_INTERACTION' : errorCode(e, 'BACKEND_ERROR');

@@ -2,11 +2,30 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, cpSync } from 'node:fs';
 import path from 'node:path';
 import { setup, eventually, input } from '../helpers.ts';
 
 const launcher = path.resolve('start.sh');
+for(const xdg of [false,true])test(`start.sh: finds private default config outside repository (XDG=${xdg})`,async t=>{
+  const h=setup(t),app=path.join(h.root,'launcher');mkdirSync(app);
+  // Isolate config discovery from the developer's real repository/home configuration.
+  const script=path.join(app,'start.sh');writeFileSync(script,readFileSync(launcher),{mode:0o755});
+  cpSync(path.resolve('dist'),path.join(app,'dist'),{recursive:true});symlinkSync(path.resolve('node_modules'),path.join(app,'node_modules'));
+  writeFileSync(path.join(app,'package.json'),JSON.stringify({type:'module'}));
+  // The suite has already built dist; keep dependency installation out of this discovery fixture.
+  const bin=path.join(h.root,'bin');mkdirSync(bin);
+  writeFileSync(path.join(bin,'npm'),'#!/bin/sh\ncase "$1:$2" in ls:--depth=0|run:build) exit 0 ;; *) exit 90 ;; esac\n',{mode:0o755});
+  const configRoot=xdg?path.join(h.root,'private config'):path.join(h.home,'.config'),dir=path.join(configRoot,'wecom-agent-bridge');mkdirSync(dir,{recursive:true});
+  writeFileSync(path.join(dir,'config.local.json'),JSON.stringify(h.c));
+  const env:NodeJS.ProcessEnv={...process.env,HOME:h.home,PATH:bin+path.delimiter+process.env.PATH};delete env.XDG_CONFIG_HOME;if(xdg)env.XDG_CONFIG_HOME=configRoot;
+  const child=spawn(process.platform==='darwin'?'sh':'bash',[script],{cwd:h.root,env,stdio:'pipe'}),exit=once(child,'exit');let stdout='',stderr='';
+  child.stdout.on('data',b=>{stdout+=b;});child.stderr.on('data',b=>{stderr+=b;});
+  h.cleanups.push(async()=>{if(child.exitCode===null && child.signalCode===null){child.kill('SIGTERM');await exit;}});
+  await eventually(()=>existsSync(path.join(h.c.stateRoot,'instance.lock')),15000).catch(e=>{throw new Error(`${e.message}: ${stderr}`);});
+  child.stdin.end(JSON.stringify({id:'default-config-help',session:'test',text:'/help',images:[]})+'\n');
+  const [code]=await exit;assert.equal(code,0,stderr);assert.match(stdout,/"type":"result"/);assert(!stderr.includes('Config not found'));
+});
 test('start.sh: restarts its live instance, recovers a stale lock and preserves JSONL stdout', async t => {
   const h = setup(t), config = path.join(h.root, 'config with spaces.json');
   writeFileSync(config, JSON.stringify(h.c));

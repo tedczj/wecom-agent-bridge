@@ -9,6 +9,7 @@ while [[ $# -gt 0 ]]; do
     --help|-h)
       echo "Usage: $0 [--backend codex|pi] [config.json]"
       echo 'Defaults: config.local.json; --backend pi selects config.pi.weixin.local.json.'
+      echo 'Searches the repository first, then ${XDG_CONFIG_HOME:-$HOME/.config}/wecom-agent-bridge/.'
       exit 0 ;;
     --backend)
       if [[ -n "$bridge_backend" || $# -lt 2 || ( "$2" != codex && "$2" != pi ) ]]; then
@@ -22,8 +23,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 if [[ -z "$bridge_config" ]]; then
-  bridge_config="$bridge_dir/config.local.json"
-  if [[ "$bridge_backend" == pi ]]; then bridge_config="$bridge_dir/config.pi.weixin.local.json"; fi
+  bridge_config_name='config.local.json'
+  if [[ "$bridge_backend" == pi ]]; then bridge_config_name='config.pi.weixin.local.json'; fi
+  bridge_config="$bridge_dir/$bridge_config_name"
+  if [[ ! -f "$bridge_config" ]]; then
+    bridge_config="${XDG_CONFIG_HOME:-$HOME/.config}/wecom-agent-bridge/$bridge_config_name"
+  fi
 fi
 [[ "$bridge_config" == /* ]] || bridge_config="$PWD/$bridge_config"
 if [[ ! -f "$bridge_config" ]]; then

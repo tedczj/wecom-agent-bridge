@@ -32,6 +32,8 @@ CREATE INDEX IF NOT EXISTS outbox_state_due ON outbox(state,next_attempt_at);
 export interface Selection {
   config: Config; digest: string; directory: import('./routing/catalog.ts').Directory; reason: string;
   sessionKey?: string; fresh?: boolean; bind?: boolean; ref?: SessionRef; lastResponseAt?: number | null;
+  execution?: import('./routing/execution.ts').Execution; contextTaskIds?: string[]; announce?: boolean;
+  authorizedRequestTaskId?: string;
 }
 export class Store {
   readonly db: DatabaseSync; private depth = 0;
@@ -102,6 +104,9 @@ export class Store {
     return this.session(key);
   }
   get(taskId: string): Job { const j = this.db.prepare('SELECT * FROM jobs WHERE task_id=?').get(taskId) as Job | undefined; invariant(j, 'TASK_NOT_FOUND'); return j; }
+  recent(route: Incoming['route'], since: number): Job[] {
+    return (this.db.prepare("SELECT * FROM jobs WHERE channel_id=? AND json_extract(route_json,'$.kind')=? AND json_extract(route_json,'$.targetId')=? AND json_extract(route_json,'$.senderId')=? AND created_at>=? ORDER BY seq DESC LIMIT 6").all(route.channelId,route.kind,route.targetId,route.senderId,since) as unknown as Job[]).reverse();
+  }
   reserve(incoming: Incoming, kind: 'agent' | 'command', selection?: Selection): {job: Job; duplicate: boolean} {
     return this.atomic(() => {
       const digest = createHash('sha256').update(JSON.stringify([incoming.route, incoming.text, incoming.media])).digest('hex');
@@ -128,7 +133,7 @@ export class Store {
         const own = this.db.prepare("SELECT count(*) n FROM jobs WHERE session_key=? AND kind='agent' AND status IN ('preparing','queued')").get(session.session_key) as {n: number};
         invariant(n.n < this.c.queue.maxPendingGlobal && own.n < this.c.queue.maxPendingPerSession, 'QUEUE_FULL');
       }
-      const input: NormalizedInput = { taskId: randomUUID(), messageId: incoming.messageId, route: incoming.route, receivedAt: incoming.receivedAt, text: incoming.text, images: [], workspaceId: config.workspace.id, routing: selection ? {directory:selection.directory,digest:selection.digest,reason:selection.reason} : undefined, sessionKey: session.session_key, generation: session.generation };
+      const input: NormalizedInput = { taskId: randomUUID(), messageId: incoming.messageId, route: incoming.route, receivedAt: incoming.receivedAt, text: incoming.text, images: [], attachmentCount:incoming.media.length, contextTaskIds:selection?.contextTaskIds, workspaceId: config.workspace.id, routing: selection ? {directory:selection.directory,digest:selection.digest,reason:selection.reason,execution:selection.execution,announce:selection.announce,authorizedRequestTaskId:selection.authorizedRequestTaskId} : undefined, sessionKey: session.session_key, generation: session.generation };
       this.db.prepare('INSERT INTO jobs(task_id,channel_id,message_id,request_hash,kind,session_key,route_json,input_json,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(input.taskId, incoming.route.channelId, incoming.messageId, digest, kind, session.session_key, JSON.stringify(incoming.route), JSON.stringify(input), kind === 'agent' ? 'preparing' : 'queued', Date.now());
       return { job: this.get(input.taskId), duplicate: false };
     });
@@ -136,6 +141,13 @@ export class Store {
   prepared(taskId: string, images: ImageRef[]): boolean {
     const input: NormalizedInput = JSON.parse(this.get(taskId).input_json); input.images = images;
     return this.db.prepare("UPDATE jobs SET input_json=?,status='queued' WHERE task_id=? AND status='preparing'").run(JSON.stringify(input), taskId).changes === 1;
+  }
+  announce(taskId:string,text:string):void {
+    const job=this.get(taskId);invariant(job.status==='running','TASK_NOT_RUNNING');
+    this.atomic(()=>{
+      for(const [n,piece] of resultParts(taskId,text,this.c.reply.chunkBytes).entries())
+        this.db.prepare("INSERT OR IGNORE INTO outbox(delivery_id,task_id,purpose,part_no,target_json,body_json,state,created_at) VALUES (?,?,'start',?,?,?,'pending',?)").run(randomUUID(),taskId,n+1,job.route_json,JSON.stringify({text:piece}),Date.now());
+    });
   }
   claim(): Job | undefined {
     return this.atomic(() => {

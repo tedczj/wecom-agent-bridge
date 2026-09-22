@@ -17,6 +17,8 @@ import { MediaStore } from '../../src/media.ts';
 import { openService } from '../../src/main.ts';
 import { workspaceLock } from '../../src/routing/lock.ts';
 import type { AgentResult } from '../../src/types.ts';
+import sharp from 'sharp';
+import { execFileSync } from 'node:child_process';
 function configured(t: Parameters<typeof setup>[0]) {
   const h=setup(t);const second=path.join(h.root,'second');mkdirSync(second);
   h.c.routing=parseRouting({roots:[{id:'projects',path:h.root,profile:'default'}],profiles:[{id:'default',version:'1'}],workspaces:[{id:'test',path:h.workspace,profile:'default',aliases:['微信桥']},{id:'second',path:second,profile:'default',aliases:['配音'],description:'视频配音'}],history:false});
@@ -272,8 +274,8 @@ test('I02: model failure does not fall back to executing ordinary text; no tool 
   const failed=await h.submit('look at session progress');assert.equal(failed.error_code,'ROUTER_TOOL_ATTEMPT');assert.equal(h.backend.calls.length,0);
   assert(!existsSync(path.join(h.c.stateRoot,'routing-agent','state','agent-process.json')));
 });
-test('I03: host rejects model path escalation and validates codex interpreter configuration',async t=>{
-  const h=configured(t);h.c.agent.env.FAKE_MODE='router';h.c.agent.env.FAKE_ROUTER_ACTION='switch';h.c.agent.env.FAKE_ROUTER_QUERY='/etc';h.c.routing!.interpreter={provider:'codex',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:1000};
+test('I03: host rejects model private-path escalation and validates codex interpreter configuration',async t=>{
+  const h=configured(t);h.c.agent.env.FAKE_MODE='router';h.c.agent.env.FAKE_ROUTER_ACTION='switch';h.c.agent.env.FAKE_ROUTER_QUERY=h.c.codex.home;h.c.routing!.interpreter={provider:'codex',model:'gpt-5.6-terra',reasoning:'high',timeoutMs:1000};
   const failed=await h.submit('请处理目录');assert.equal(failed.status,'failed');assert.equal(h.backend.calls.length,0);assert.equal(h.router.state(h.incoming()).active,undefined);
   assert.throws(()=>parseRouting({...h.c.routing,interpreter:{provider:'codex',model:'x',endpoint:'https://example.invalid'}}),/ROUTING_INTERPRETER_CONFIG/);
   assert.throws(()=>parseRouting({...h.c.routing,interpreter:{provider:'codex',model:'x',reasoning:'unbounded'}}),/CONFIG_REASONING/);
@@ -301,4 +303,124 @@ test('H07: model and reasoning changes keep history readable without authorizing
   assert.equal((await h.router.history.read(target,file))!.resumable,false);
   appendFileSync(file,JSON.stringify({type:'turn_context',payload:{cwd:h.workspace,model:'gpt-6-astra',effort:'high'}})+'\n');
   assert.equal((await h.router.history.read(target,file))!.resumable,true);
+});
+
+function planner(t:Parameters<typeof setup>[0],cases:Record<string,unknown>) {
+  const h=configured(t);
+  h.c.agent.env.FAKE_MODE='router';h.c.agent.env.FAKE_ROUTER_CASES=JSON.stringify(cases);
+  h.c.routing!.interpreter={provider:'codex',model:'router-model',timeoutMs:2000};
+  writeFileSync(path.join(h.c.codex.home,'models_cache.json'),JSON.stringify({models:[{slug:'gpt-5.6-terra'},{slug:'gpt-6-astra'}]}));
+  return h;
+}
+test('PL01: incident material remains work; incomplete switch cannot report current directory as success',async t=>{
+  const report='图片显示：微信机器人连续三次查询会话，都回复未找到历史会话。用户试过切换目录。';
+  const h=planner(t,{[report]:{action:'work'},'切换到 wecom bridge 目录':{action:'switch'}});
+  const work=await h.submit(report);assert.equal(work.kind,'agent');assert.equal(h.backend.calls[0]!.text,report);
+  const invalid=await h.submit('切换到 wecom bridge 目录');assert.match(invalid.result_text!,/尚未切换/);assert.equal(h.backend.calls.length,1);
+});
+test('PL02: discovered directory, model alias, reasoning and fresh task form one durable request',async t=>{
+  const request='找到 OCR 项目，用 terra high 新开会话，只检查，不修改';
+  const h=planner(t,{[request]:{action:'new',query:'doc-ocr-service',execution:{backend:'codex',model:'terra',reasoning:'high'},execute:true},'继续检查':{action:'work'}});
+  const dir=path.join(h.root,'doc-ocr-service');mkdirSync(dir);
+  const first=await h.submit(request);assert.equal(first.status,'succeeded');assert.equal(h.backend.calls[0]!.text,request);
+  const target=h.router.current(h.incoming());assert.equal(target.directory.path,dir);assert.equal(target.config.codex.model,'gpt-5.6-terra');assert.equal(target.config.codex.reasoning,'high');
+  assert.match(first.result_text!,/gpt-5.6-terra/);assert.equal(h.c.codex.model,undefined);
+  const restarted=new Router(h.c,h.store);assert.equal(restarted.current(h.incoming()).config.codex.model,'gpt-5.6-terra');
+  await h.submit('继续检查');assert.equal(h.backend.calls[0]!.sessionKey,h.backend.calls[1]!.sessionKey);
+});
+test('PL03: changing execution creates an independent session; invalid model/backend does not mutate state',async t=>{
+  const h=planner(t,{'开始':{action:'work'},'用 terra high':{action:'work',execution:{model:'terra',reasoning:'high'},execute:false},'继续':{action:'work'},'用不存在的模型':{action:'work',execution:{model:'missing-model'}},'用 Pi':{action:'work',execution:{backend:'pi'}}});
+  await h.submit('开始');const first=h.backend.calls[0]!.sessionKey;
+  await h.submit('用 terra high');assert.equal(h.backend.calls.length,1);await h.submit('继续');assert.notEqual(first,h.backend.calls[1]!.sessionKey);
+  const target=h.router.current(h.incoming());
+  assert.equal((await h.submit('用不存在的模型')).error_code,'MODEL_NOT_FOUND');assert.equal((await h.submit('用 Pi')).error_code,'BACKEND_UNAVAILABLE');
+  assert.equal(h.router.current(h.incoming()).digest,target.digest);assert.equal(h.backend.calls.length,2);
+});
+test('PL04: host lookup observations let planner discover then read history without worker or switch',async t=>{
+  const h=planner(t,{});h.c.routing!.history=true;native(h,1,1000,h.second);
+  h.c.agent.env.FAKE_ROUTER_STEPS=JSON.stringify([{action:'inspect',lookup:'sessions',query:'second'},{action:'read',selector:'1'}]);
+  const task=await h.submit('看下配音最后更新的 session 进度');assert.equal(task.status,'succeeded');assert.match(task.result_text!,/answer-0/);assert.equal(h.backend.calls.length,0);assert.equal(h.router.current(h.incoming()).directory.id,'test');
+  const capture=JSON.parse(readFileSync(path.join(h.c.codex.home,'capture.json'),'utf8'));
+  assert.equal(JSON.parse(capture.prompt).context.observations[0].result.entries.length,1);
+});
+test('PL05: repeated lookup is bounded; lookup cannot escape roots',async t=>{
+  const h=planner(t,{});h.c.agent.env.FAKE_ROUTER_CASES=JSON.stringify({'循环':{action:'inspect',lookup:'capabilities'},'越界':{action:'inspect',lookup:'directories',query:h.c.codex.home}});
+  assert.equal((await h.submit('循环')).error_code,'ROUTER_LOOKUP_LIMIT');assert.equal((await h.submit('越界')).status,'failed');assert.equal(h.backend.calls.length,0);
+});
+for(const query of [undefined,null])test(`PL14: directory lookup with ${query} query inspects only the current authorized directory`,async t=>{
+  const h=planner(t,{});
+  h.c.agent.env.FAKE_ROUTER_STEPS=JSON.stringify([{action:'inspect',lookup:'directories',query},{action:'clarify',question:'请指定要检查的项目。'}]);
+  for(const directory of [h.workspace,h.second]) {
+    if(directory===h.second)await h.submit('/route second');
+    const task=await h.submit('检查项目库存');assert.equal(task.status,'succeeded');
+    const capture=JSON.parse(readFileSync(path.join(h.c.codex.home,'capture.json'),'utf8'));
+    const result=JSON.parse(capture.prompt).context.observations[0].result;
+    assert.deepEqual(result.directories.map((d:{path:string})=>d.path),[directory]);assert.equal(result.partial,false);
+    assert.equal(h.router.current(h.incoming()).directory.path,directory);assert.equal(h.backend.calls.length,0);
+  }
+  h.c.agent.env.FAKE_ROUTER_STEPS=JSON.stringify([{action:'inspect',lookup:'directories',query:path.dirname(h.root)}]);
+  assert.equal((await h.submit('查询未授权目录')).error_code,'STATE_WORKSPACE_OVERLAP');
+  assert.equal(h.router.current(h.incoming()).directory.path,h.second);assert.equal(h.backend.calls.length,0);
+});
+test('PL06: separate screenshot carries actual image and original context into a fresh session',async t=>{
+  const h=planner(t,{'请分析这张图片':{action:'work'},'新起 session 排查截图的问题':{action:'new',execute:true,contextIds:'latest-image'}});
+  const file=path.join(h.root,'screenshot.png');await sharp({create:{width:24,height:24,channels:3,background:'#ff0000'}}).png().toFile(file);
+  const frame=fixture('请分析这张图片','default',randomUUID(),[file]);const a=await h.bridge.accept(frame);await h.bridge.idle();
+  const second=await h.submit('新起 session 排查截图的问题'),inputs=h.backend.calls;
+  assert.equal(second.status,'succeeded');assert.notEqual(inputs[0]!.sessionKey,inputs[1]!.sessionKey);
+  assert.equal(inputs[1]!.images[0]!.sha256,inputs[0]!.images[0]!.sha256);assert.notEqual(inputs[1]!.images[0]!.localPath,inputs[0]!.images[0]!.localPath);
+  assert.match(inputs[1]!.text,/用户引用的历史材料/);assert.match(inputs[1]!.text,/answer:请分析这张图片/);assert.equal(inputs[1]!.originalText,'新起 session 排查截图的问题');
+  assert.deepEqual(inputs[1]!.contextTaskIds,[a.taskId]);assert.equal((await h.bridge.accept(frame)).duplicate,true);assert.equal(inputs.length,2);
+});
+test('PL07: context selection cannot cross conversation or explicit reset boundary',async t=>{
+  const h=planner(t,{'旧内容':{action:'work'},'不要之前聊天上下文，新开一个':{action:'new',resetContext:true},'尝试引用':{action:'work'}});
+  const old=await h.submit('旧内容');
+  const cases=JSON.parse(h.c.agent.env.FAKE_ROUTER_CASES!);cases['尝试引用']={action:'work',contextIds:[old.task_id]};h.c.agent.env.FAKE_ROUTER_CASES=JSON.stringify(cases);
+  const foreign=await h.submit('尝试引用','other');assert.equal(foreign.error_code,'CONTEXT_OWNER_MISMATCH');
+  await h.submit('不要之前聊天上下文，新开一个');assert.equal((await h.submit('尝试引用')).error_code,'CONTEXT_OWNER_MISMATCH');assert.equal(h.backend.calls.length,1);
+});
+test('PL08: queued execution retains chosen model after later changes',async t=>{
+  const h=planner(t,{'用 terra high':{action:'work',execution:{model:'terra',reasoning:'high'},execute:false},'排队任务':{action:'work'},'用 astra':{action:'work',execution:{model:'astra'},execute:false}});
+  await h.submit('用 terra high');const incoming=h.incoming('排队任务'),plan=await h.router.plan(incoming);
+  const {job}=h.store.reserve(incoming,'agent',plan.selection);plan.commit();
+  await h.submit('用 astra');h.store.prepared(job.task_id,[]);await h.bridge.accept(fixture('/status'));await h.bridge.idle();
+  assert.equal(h.backend.calls[0]!.routing!.execution!.model,'gpt-5.6-terra');assert.equal(h.router.current(h.incoming()).config.codex.model,'gpt-6-astra');
+});
+test('PL09: history absence reports directory/source/filter rather than global absence',async t=>{
+  const h=configured(t),r=await h.submit('/find 00b0d95ed31a2ac59a4ba0cc');assert.match(r.result_text!,/查询目录/);assert.match(r.result_text!,/原生历史未启用/);assert.match(r.result_text!,/不能据此断定/);
+});
+test('PL10: production dispatch forwards dynamic model/effort and resumes after restart',async t=>{
+  const h=planner(t,{'用 terra high 开始检查':{action:'new',execution:{model:'terra',reasoning:'high'},execute:true},'继续':{action:'work'}});
+  await h.bridge.stop();let service=await openService(h.c,output().stream);h.cleanups.push(()=>service.stop());
+  const a=await service.accept(fixture('用 terra high 开始检查'));await service.settle();assert.equal(service.store.get(a.taskId!).status,'succeeded');
+  let capture=JSON.parse(readFileSync(path.join(h.c.codex.home,'capture.json'),'utf8'));assert.equal(capture.args[capture.args.indexOf('--model')+1],'gpt-5.6-terra');assert(capture.args.includes('model_reasoning_effort="high"'));
+  const key=service.store.get(a.taskId!).session_key;await service.stop();service=await openService(h.c,output().stream);
+  const b=await service.accept(fixture('继续'));await service.settle();assert.equal(service.store.get(b.taskId!).session_key,key);capture=JSON.parse(readFileSync(path.join(h.c.codex.home,'capture.json'),'utf8'));assert(capture.args.includes('resume'));
+});
+test('PL11: missing referenced image fails before worker; schema cannot inject commands or paths',async t=>{
+  const h=planner(t,{'图片':{action:'work'},'带上图片新开':{action:'new',execute:true,contextIds:'latest-image'}});
+  const file=path.join(h.root,'image.png');await sharp({create:{width:2,height:2,channels:3,background:'red'}}).png().toFile(file);
+  await h.bridge.accept(fixture('图片','default',randomUUID(),[file]));await h.bridge.idle();rmSync(h.backend.calls[0]!.images[0]!.localPath);
+  const next=await h.submit('带上图片新开');assert.equal(next.status,'failed');assert.equal(h.backend.calls.length,1);
+  assert.throws(()=>validateIntent({action:'work',execution:{command:'/bin/sh'}}),/EXECUTION_SCHEMA/);
+  assert.throws(()=>validateIntent({action:'new',resetContext:true,contextIds:[randomUUID()]}),/ROUTER_CONTEXT_CONFLICT/);
+});
+test('PL12: execution announcements are durable, deduplicated and never mark a running session complete',async t=>{
+  const h=planner(t,{'用 terra 开始':{action:'new',execution:{model:'terra'},execute:true}});
+  let finish!:(value:AgentResult)=>void;h.backend.action=()=>new Promise(resolve=>{finish=resolve;});
+  const frame=fixture('用 terra 开始'),accepted=await h.bridge.accept(frame);await eventually(()=>h.backend.calls.length===1);
+  const job=h.store.get(accepted.taskId!);assert.equal(h.store.session(job.session_key).last_response_at,null);
+  assert.equal((await h.bridge.accept(frame)).duplicate,true);
+  const starts=h.store.db.prepare("SELECT body_json FROM outbox WHERE task_id=? AND purpose='start'").all(job.task_id);assert.equal(starts.length,1);assert.match(String(starts[0]!.body_json),/gpt-5.6-terra/);
+  finish({outcome:'success',finalText:'done'});await h.bridge.idle();assert(h.store.session(job.session_key).last_response_at);
+});
+test('PL13: restart preflight validates the queued override instead of the directory default',async t=>{
+  const h=configured(t);await h.bridge.stop();
+  const target=h.router.catalog.target(h.router.current(h.incoming()).directory,{model:'gpt-5.6-terra',reasoning:'high'});
+  const {job}=h.store.reserve(h.incoming(),'agent',{...target,reason:'execution-changed',fresh:true,bind:true});h.store.prepared(job.task_id,[]);
+  const file=path.join(h.root,'config.json');writeFileSync(file,JSON.stringify(h.c));
+  execFileSync(process.execPath,[path.resolve('dist/scripts/restart-bridge.js'),file,path.resolve('dist/src/cli.js')],{stdio:'pipe'});
+  assert.equal(h.store.get(job.task_id).status,'queued');
+  h.c.routing!.profiles[0]!.version='changed';writeFileSync(file,JSON.stringify(h.c));
+  assert.throws(()=>execFileSync(process.execPath,[path.resolve('dist/scripts/restart-bridge.js'),file,path.resolve('dist/src/cli.js')],{stdio:'pipe'}),/PROFILE_CHANGED/);
 });

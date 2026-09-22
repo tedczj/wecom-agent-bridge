@@ -47,8 +47,11 @@ else {
     }
   } else if (mode === 'ack-only') { /* exit without terminal event */ }
   else if (mode === 'fail') { emit({type:'turn.failed',error:{message:'FAKE_SECRET_NEVER_LOG_ME'}}); process.exitCode = 1; }
-  else if(mode==='router') {
-    const result={action:process.env.FAKE_ROUTER_ACTION??'list',query:process.env.FAKE_ROUTER_QUERY??'second',selector:null,alias:null,execute:null};
+  else if(mode==='router' && args.includes('--ephemeral')) {
+    const request=JSON.parse(prompt),steps=process.env.FAKE_ROUTER_STEPS?JSON.parse(process.env.FAKE_ROUTER_STEPS):undefined;
+    const cases=process.env.FAKE_ROUTER_CASES?JSON.parse(process.env.FAKE_ROUTER_CASES):{};
+    const result=cases[request.text]??steps?.[request.context?.observations?.length??0]??(process.env.FAKE_ROUTER_JSON?JSON.parse(process.env.FAKE_ROUTER_JSON):{action:process.env.FAKE_ROUTER_ACTION??'list',query:process.env.FAKE_ROUTER_QUERY??'second',selector:null,alias:null,execute:null});
+    if(result.contextIds==='latest-image')result.contextIds=request.context.recent.filter(x=>x.images>0).slice(-1).map(x=>x.id);
     emit({type:'item.completed',item:{id:'answer',type:'agent_message',text:JSON.stringify(result)}});
     emit({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}});
   }

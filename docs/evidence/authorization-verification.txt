@@ -1,0 +1,19 @@
+Directory authorization and fallback verification - 2026-09-23
+npm ci --no-audit --no-fund: exit 0 (lockfile install; audit not run)
+npm run check: exit 0; typecheck/build; 199 tests passed, 0 failed/cancelled/skipped
+AUTH01-AUTH11: 21 offline double cases; not live model or OS-isolation evidence
+AUTH10/AUTH11: both failed before fallback fix, both passed after fix
+No --live: exit 1, LIVE_OPT_IN_REQUIRED
+Live authorization/fallback probe: exit 0; real planner + read-only worker; temporary local directories/state
+- first request produced exact absolute-path consent question; no worker before consent
+- next explicit local test consent executed the original request in the approved temporary directory
+- native turn metadata: model=gpt-5.6-terra; reasoning=high; temporary working directory matched
+- confirmation identity and source request link preserved; duplicate consent executed once
+- no Weixin message sent or production grant created by probe
+- final server model and OS isolation not verified
+Read-only live planning of original incident request: exit 0; exact-path authorization question
+- no plan commit, worker invocation, production grant or Weixin send
+Deployment: service restarted after idle/preflight checks
+- prior user-granted path/physical identity/confirmation lineage retained in private state
+- effective fallback profile verified as gpt-5.6-terra / high; global roots unchanged
+Post-fix mobile task display and stock-site availability remain unverified

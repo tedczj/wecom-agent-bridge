@@ -1,59 +1,71 @@
 # 当前验证记录
 
-验证日期：2026-09-22。本文覆盖当前个人微信与本地入口版本；旧阶段的失败日志和报告由 Git 历史保留，不再作为当前说明叠加。
+验证日期：2026-09-23。环境：macOS / Darwin arm64、Node v24.15.0、npm 11.12.1、Codex CLI 0.155.1。
 
-## 当前本地检查
+## 本轮组合路由实现
 
-环境：macOS / Darwin arm64、Node v25.1.0、npm 11.6.2。
+自然语言请求现在可组合目录、执行 backend/model/reasoning、新会话和材料交接；路由可请求有界只读查询，宿主验证并执行。未登记的项目继承授权根的 profile，模型组合不需单独建 profile。原 58 个验收 ID 与 BR-01..BR-22 均保留，新增 PL01..PL14、AUTH01..AUTH11 及两项 Pi 参数契约测试，映射见 [TEST_MATRIX.md](TEST_MATRIX.md)。
 
-| 检查 | 结果 | 证据 |
-|---|---|---|
-| `npm ci --no-audit --no-fund` | exit 0，从当前 lockfile 安装 | [install.txt](evidence/install.txt) |
-| `npm run check` | exit 0；类型检查、构建、159 tests；0 failed / cancelled / skipped | [check.txt](evidence/check.txt) |
-| `npm run smoke:routing` 不带 `--live` | exit 1，LIVE_OPT_IN_REQUIRED；未调用模型 | [routing-opt-in.txt](evidence/routing-opt-in.txt) |
-| `npm run smoke:routing -- --live --config FILE` | exit 0；真实分类与只读历史，未调用 worker/发送微信 | [routing-live.txt](evidence/routing-live.txt) |
-| `bash -n start.sh` | 通过 | 本地执行 |
-| 构建/测试输入校验 | SHA-256 清单 | [source-manifest.sha256](source-manifest.sha256) |
+| 检查 | 本轮结果 |
+|---|---|
+| `npm ci --no-audit --no-fund` | exit 0，按 lockfile 安装；本次未运行 audit，未升级依赖 |
+| `npm run check` | exit 0；类型检查、构建、199 tests；0 failed / cancelled / skipped |
+| `git diff --check` | exit 0 |
+| `smoke:planner --live` | exit 0；真实规划、两次本地只读工作任务、合成图片交接和原生 turn metadata 校验通过 |
+| 默认启动配置查找 | HOME / XDG 两项隔离启动测试通过，兼容 macOS `sh start.sh` |
+| 微信端新版消息收发 | 现场已记录用户明确授权后的一次任务；兜底修复后服务已重启、有效配置已核对，手机端新任务展示尚未复测 |
 
-测试日志来自本轮真实执行，已替换本机临时路径和进程 PID；测试结果、数量和耗时保留。默认用例全部使用合成数据和离线协议 doubles。用例范围见 [TEST_MATRIX.md](TEST_MATRIX.md)。
+[此前组合路由结果摘要](evidence/planner-verification.txt)和[本次交互授权摘要](evidence/authorization-verification.txt)是已执行命令的结果摘录，不是完整控制台日志。[源码 SHA-256 清单](source-manifest.sha256)绑定当前源码/测试输入。
 
-## 本轮目录路由验收
+## 目录查询缺参修复（2026-09-23）
 
-修复基线 `ef9c0f9`。现场失败任务在路由阶段报 HISTORY_FORMAT，尚未启动 worker：全库扫描遇到一份已知旧版无 cwd 的 Codex header；规则解析也未把自然语言 session 进度请求识别为历史查询。
+规划约定允许 query 省略以表示当前目录，但目录 inspect 原实现直接抛出 ROUTER_QUERY_REQUIRED。现在省略或 null 只返回授权校验后的当前目录元数据，显式查询仍遵守原 roots。PL14 两个离线回归在修复前均失败，修复后验证默认目录、切换后目录、绑定不变、不调用 worker 和越权拒绝；完整 178 项检查通过。微信服务已重启加载修复，未重放失败请求；本次没有运行真实模型复测或库存网站查询。
 
-- 159 tests 全部通过，其中 `tests/unit/routing.test.ts` 的 48 个用例覆盖原 BR-01..BR-22 及 H01–H07、I01–I05；原始 58 ID 未删除。
-- 修复包含 native SQLite cwd 定位、先验证 header scope 再解析正文、流式读取大历史、活动历史可读不可恢复、坏文件的不完整提示，以及 Agent 优先分类、固定 CLI 参数、工具事件拒绝、模型失败不转 worker、关闭时取消分类器。
-- 本轮最初回归暴露旧测试对 HISTORY_FORMAT 的断言需更新为 HISTORY_UNVERIFIED，以及配置解析器无法二次接受默认空 description；已修正并通过最终全量检查。依赖从 lockfile 安装，未使用离线替代依赖。
-- 本机运行于 Darwin arm64；离线 doubles 仍不代表全面 macOS 能力、OS 隔离或真实工作 Agent 验收。
+## 交互目录授权（2026-09-23）
 
-## 本轮真实路由 Agent 与 native history 验证
+用户要求根外目录必须经下一条明确同意授权，不能直接编辑 roots。手工加入的生产目录已撤回；本次实现将提案与 grant 保存在对话私有状态，未自动授权生产目录。AUTH01–AUTH09 共 19 个离线用例验证确认、拒绝/含糊回复、送达状态、过期、路径/配置变化、隔离、重启、请求身份和模型目标变更。模型改派目标的初版测试在提示后改变 fake 环境，先触发了正确的 PROFILE_CHANGED；改为提示前固定两阶段响应后才验证到目标变更拒绝，没有放宽配置校验。
 
-- 已安装 Codex CLI 0.155.1，使用原有登录、独立路由 cwd、read-only、ephemeral、忽略用户配置及规则、固定 JSON schema。没有新增 API key，也没有把认证内容复制到仓库。
-- 私有配置指定 provider=codex、model=gpt-5.6-terra、reasoning=high；模型名与 reasoning 是请求配置，不是最终服务端路由证明。
-- 显式 --live 验证了现场问题表达，以及公开 smoke 中的等价合成查询。两次均通过完整 exec thread/turn/final/exit/cleanup 条件，并被验证为 OCR 历史查询而非执行/切目录。
-- 修复后的只读 native parser 从实际 Codex 索引定位并读取 OCR 项目 **7 个会话，1 个活动会话，0 个解析问题，1 页完成**。记录只公开数量和状态，不公开原文、标题、预览、session ID 或路径。
-- 验证过程未调用下游 worker、未发送微信消息，未重放已失败任务。其他三个工作目录的模型 profile 保持既有配置；修复后微信端实际展示仍需以用户消息结果为准。
-- 该有限样本不证明普遍语义准确率、全部 native 格式或外部副作用隔离。真实源码/已安装格式与此次读取已验证；完整新版微信问答交付没有冒称通过。
+- `smoke:authorization --live`：真实规划 Agent 先返回含绝对路径的授权问题，此时没有工作任务；测试会话下一条明确同意后，真实只读工作 Agent 成功报告临时工作目录。原请求与确认消息身份分别保留，重复确认消息只执行一次。
+- 使用原现场请求与近期上下文做只读真实规划复测，返回目标绝对路径的授权询问；未 commit 计划、未运行工作 Agent、未发送微信消息、未写入生产授权。
+- 测试使用临时目录和独立本地状态；本次不重认 OS 隔离、库存网站查询或手机端完整授权流程。服务已通过空闲/进程预检并重启加载修复；随后现场已记录用户下一条明确同意和一次工作任务；该任务使用了错误的默认模型，引出了本节下方的兜底修复。
 
-## 此前观察到的真实链路（本轮未重查）
+## 授权目录兜底修复（2026-09-23）
 
-- 安装的 Codex CLI 0.155.1：显式 `--live` smoke exit 0，两轮问答通过，跨进程恢复上下文通过，会话引用一致。该工作 Agent 两轮 smoke 来自此前执行；本轮真实调用仅验证路由 Agent。
-- 本机 Pi 源码版本 0.87.0、revision `95fbc04997eaee961eb673fa7923e9220609ebd5`：通过私有包装器启动 RPC，`get_state` 报告配置模型 `openai-codex / gpt-5.6-sol`、空闲状态。配置接入时 `npm run smoke:pi -- --live --config config.pi.local.json` exit 0，真实两轮问答、跨进程上下文恢复和相同会话引用通过；完成判定包含 `agent_settled`。模型名称是运行时配置报告，不是最终服务端模型路由证明。
-- 本机 Pi 包装器在 macOS `sandbox-exec` 中运行，仅开放 read/grep/find/ls 工具，关闭扩展自动发现。真实非模型探针确认：工作目录和运行目录外写入被拒绝、微信认证文件读取被拒绝、本地端口监听被拒绝、私有临时目录可写。允许模型网络访问及 Pi 认证刷新/配置锁；这些有限检查不代表完整 OS 隔离、凭据隔离或外部副作用清理。包装器和本机路径保持私有，不属于仓库的可移植部署产物。
-- `./start.sh --backend pi` 已停止原 Codex bridge 并启动 Pi 配置的微信接收循环，复用原 stateRoot 和登录，无需重新扫码。这是历史记录；当前实例在后续操作中已切到 Codex。本次修复按用户要求在推送后重启，启动结果需以现场检查为准。
-- 微信真实二维码接口返回成功，终端二维码实际渲染。用户已完成手机绑定，凭据复用成功。
-- 认证后的 getupdates 响应实际省略 ret 和 errcode。适配器现接受省略或数值零，仍拒绝非零及非法类型；W13/W14 覆盖收消息、Agent 执行、回复 ACK 和游标持久化。
-- 上一轮只读 SQLite 汇总显示 **Codex 3 个任务 succeeded、Pi 2 个任务 succeeded，共 5 条 outbox sent**；其中 Codex 1 个、Pi 2 个任务带图片。Pi 已观察到真实微信接收、模型执行及回复发送 ACK，轮询游标已持久化。此处只记录汇总，不包含账号 ID、消息、模型回答、图片、任务 ID 或数据库文件。
-- outbox sent 表示 iLink 发送接口返回合法成功响应，不表示用户已经阅读，也不是对图片理解准确性的评价。
+新授权目录原先继承当前工作区 profile，导致项目的显式 Astra 配置覆盖预期兜底；现改为默认工作区所属最具体 root 的 profile。授权询问展示默认模型/推理，用户明确指定的设置优先；缺少 root profile 时阻断。AUTH10/11 在修复前均失败，修复后通过；既有项目配置、隔离、队列和确认流程保持。两处路径拒绝夹具改用私有测试目录，消除 macOS /etc 链接差异。
 
-## 尚未验收的能力
+本机兜底已修正为 gpt-5.6-terra / high。针对已有的单个授权目录，在服务空闲停机、私有配置与 SQLite 备份后，核验原授权问题、同意消息归属和目录物理身份，仅修正 profile/版本及对应目录引用；保留原确认关联，roots 和历史任务记录不变。服务已重启，当前目标配置核对为 Terra high。
 
-- 实际语音是否附带转写以及转写质量；没有转写时未配置额外 ASR。
-- 图片内容理解的人工准确性验收；目前有字节传输测试与现场带图任务成功记录。
-- Pi 的图片理解准确性、真实取消和手机端实际显示尚未验收；已有带图任务成功及发送 ACK 记录，当前本地配置仅开放读取工具。
-- 实际 Codex 沙箱强度、代码修改质量、真实模型取消后的所有外部副作用清理、脱离进程组的守护程序。
-- 本次提交对应的 Linux/macOS CI 结果须以远端 workflow 为准；本地 macOS 测试不替代远端结果。
+更新后的 `smoke:authorization --live` 在临时目录以默认工作区 profile 与 root 兜底 profile 分离的配置复测；真实两轮授权/执行通过，原生 turn_context 确认 model=gpt-5.6-terra、reasoning=high 和临时工作目录。仅说明客户端实际配置，不是服务端最终模型路由证明；未发送微信或新增生产目录授权。
 
-## 隐私与范围
+## 真实模型证据与边界
 
-本轮公开证据只保留经过路径脱敏的离线测试输出和上述汇总。真实 auth、context、cursor、会话内容、模型输出与本地配置保持在私有运行目录或 Git 忽略文件中。提交内容审查方法和历史边界见 [PRIVACY.md](PRIVACY.md)。
+`npm run smoke:planner -- --live --codex <已安装CLI> --home <已登录Codex目录>` 在临时项目和独立 stateRoot 中运行，使用合成纯红图片，不读取生产对话或发送微信消息。
+
+- 中文排障材料被识别为 work；OCR session 进度请求被识别为只读 inspect；“切换到 wecom bridge 目录”产生带目标的 switch。
+- 第一条带图消息由真实工作 Agent 完成。随后请求发现未登记的 doc-ocr-service 目录，指定 Codex / terra / high，新开会话并携带前图；两次任务均 succeeded。
+- 新旧会话身份不同；复制图片的 SHA-256 相同；新会话回复包含目标绝对路径，并正确识别红色。
+- 原生 Codex 索引与 rollout turn_context 验证实际 cwd、model=gpt-5.6-terra、effort=high。它们是客户端记录，不是服务端最终模型路由证明。
+- 最初 smoke 因子进程缺少当前网络代理而连接失败；CLI error item 曾被误标为 ROUTER_TOOL_ATTEMPT。测试现仅显式传入 HTTP_PROXY/HTTPS_PROXY/NO_PROXY，产品把错误事件与执行工具事件区分，仍拒绝执行工具，不放宽目录/沙箱权限。失败尝试未派发工作任务。
+- 真实 smoke 通过后，补充启动回执、重启预检和默认私有配置查找；这些调整由完整 176 项离线检查验证，没有将它们说成手机端已验证。
+
+## 离线验证范围
+
+默认测试不调用模型。PL01..PL14 使用脚本化解释器及合成文件，验证组合请求的执行与状态契约，而不是模型准确率：未配置目录、别名模型选择、配置独立会话、只读查询循环、越权拒绝、真实图片字节复制、原文保留、跨对话隔离、上下文清空边界、排队配置、重启续接、缺图拒绝、启动回执去重与重启配置预检。
+
+Pi 新增测试通过 native RPC double 验证 get_available_models / set_model / set_thinking_level / get_state，在实际推理等级与请求不符时不发送 prompt。本轮没有运行真实 Pi 模型切换。
+
+启动脚本依次查仓库内配置与 `${XDG_CONFIG_HOME:-$HOME/.config}/wecom-agent-bridge/`，显式指定文件不走兜底。两项新增测试运行隔离的真实本地 CLI，测试夹具仅跳过已完成的 npm 安装/构建步骤。最初夹具把 dist 作为符号链接，触发 CLI 入口路径检查而未启动；改为复制已编译文件后通过，未放宽产品入口检查。
+
+回归中发现只含完成事件最终文本的历史没有 assistant preview，现补入摘要并去重。全部既有队列、去重、所有权、取消、故障恢复、消息投递和媒体预算测试保留通过。
+
+## 历史证据（本轮不重新认定）
+
+`evidence/check.txt`、`install.txt`、`routing-live.txt` 和 `routing-opt-in.txt` 是此前 159 项检查及真实只读 OCR 历史查询的记录，环境为此前运行环境，不是本轮控制台日志。此前观察过 Codex/Pi 两轮会话、微信配对和图片投递，不能据此认定本轮微信新版验收通过。
+
+## 尚未验收与隐私
+
+- 用户实际截图的理解准确率、任意中文表达的泛化效果、修复后的手机端最新消息展示与完整工作任务验收。
+- Pi 真实模型/推理切换，以及各后端的真实取消、脱离进程组副作用和完整 OS 隔离。
+- 远端 CI；本地 macOS 检查不能代替远端 workflow 结果。
+
+临时测试状态和原生测试会话保留用于本地核查；不提交认证、代理值、私有路径、模型原文、图片或运行数据库。公开证据仅包含合成样本的状态与参数摘要。图片交接仍受保留期/数量/大小/像素上限限制；不支持无限历史记忆或微信原生引用消息。

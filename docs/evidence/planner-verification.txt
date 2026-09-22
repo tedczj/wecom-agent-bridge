@@ -1,0 +1,22 @@
+2026-09-22: observed command-result summary (not a full console transcript)
+Environment: Darwin arm64; Node v24.15.0; npm 11.12.1; codex-cli 0.155.1
+
+npm ci: exit 0; 16 packages added; 1 high audit finding; no dependency upgrades
+npm run check: exit 0
+tests 176; pass 176; fail 0; cancelled 0; skipped 0; todo 0
+duration_ms 27359.506791
+git diff --check: exit 0
+bash -n start.sh: exit 0
+HOME/XDG private default configuration: two isolated local CLI startup tests passed
+
+npm run smoke:planner -- --live --codex <installed CLI> --home <logged-in home>: exit 0
+{"check":"live-planning","sample":1,"action":"work","passed":true}
+{"check":"live-planning","sample":2,"action":"inspect","passed":true}
+{"check":"live-planning","sample":3,"action":"switch","passed":true}
+{"check":"live-first-image","passed":true}
+{"check":"live-compound-handoff","passed":true,"unconfiguredDirectory":true,"newSession":true,"imageHashPreserved":true,"nativeModel":"gpt-5.6-terra","nativeReasoning":"high","visualReply":"red","weixinSent":false,"finalServerModel":"not-verified"}
+
+Initial live attempts: failed before worker dispatch due to missing proxy in the explicitly restricted child environment.
+CLI error item now has a distinct sanitized error classification; execution tool rejection remains enabled.
+Final startup-announcement/restart-preflight/default-config discovery changes: covered by the full offline check above, not a later live model rerun.
+Production Weixin restart/delivery and real Pi model switching: NOT VERIFIED in this round.

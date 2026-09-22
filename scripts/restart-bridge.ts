@@ -1,4 +1,4 @@
-import { Catalog } from '../src/routing/catalog.ts';
+import { Router } from '../src/routing/router.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -26,8 +26,8 @@ async function main(): Promise<void> {
       invariant(!foreign, 'BACKEND_SWITCH_BUSY');
       const routed=store.db.prepare("SELECT input_json FROM jobs WHERE json_extract(input_json,'$.routing') IS NOT NULL AND kind='agent' AND status IN ('preparing','queued','running','cancel_requested')").all() as {input_json:string}[];
       if(routed.length) {
-        invariant(c.routing,'ROUTING_CONFIG_REQUIRED');const catalog=new Catalog(c);
-        for(const row of routed) { const r=JSON.parse(row.input_json).routing; invariant(catalog.target(r.directory).digest===r.digest,'PROFILE_CHANGED'); }
+        invariant(c.routing,'ROUTING_CONFIG_REQUIRED');const router=new Router(c,store);
+        for(const row of routed) { const input=JSON.parse(row.input_json),r=input.routing; invariant(router.executionTarget(input.route,r.directory,r.execution).digest===r.digest,'PROFILE_CHANGED'); }
       }
     } finally { store.close(); }
   };

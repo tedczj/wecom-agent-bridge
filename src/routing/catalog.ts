@@ -5,8 +5,10 @@ import { configSources, parseConfig, preparePaths, type Config } from '../config
 import { inside, readControlled } from '../fsutil.ts';
 import { invariant } from '../errors.ts';
 import { hash } from './config.ts';
+import { availableModels, executable, resolveModel, validateExecution, type Execution } from './execution.ts';
 export interface Directory { id: string; path: string; identity: string; profile: string; aliases: string[]; description: string }
-export interface Target { directory: Directory; config: Config; digest: string }
+export interface DirectoryGrant { directory: Directory; version: string; requestTaskId?: string; approvalMessageId?: string }
+export interface Target { directory: Directory; config: Config; digest: string; execution?: Execution }
 export interface Scan { queue: Array<{path: string; depth: number; after?: string}>; deferred: Array<{path: string; depth: number}>; matches: Directory[] }
 const skip = new Set(['.git','node_modules','.cache','__pycache__','.venv','venv','dist','build','target','.next']);
 export function physical(file: string): string { const s = statSync(file); invariant(s.isDirectory(),'DIRECTORY_MISSING'); return `${s.dev}:${s.ino}`; }
@@ -14,37 +16,62 @@ export class Catalog {
   readonly version: string;
   readonly roots: Array<{id: string; path: string; profile?: string; identity: string}>;
   readonly configured: Directory[];
-  constructor(readonly base: Config) {
+  constructor(readonly base: Config, readonly grants: DirectoryGrant[] = [], snapshot?:Catalog) {
     const r = base.routing!;
-    this.roots = r.roots.map(root => ({...root,path:realpathSync(root.path),identity:physical(root.path)}));
-    this.configured = r.workspaces.map(w => this.describe(w.path,w));
+    this.version = hash(r);
+    this.roots = snapshot?.roots ?? r.roots.map(root => ({...root,path:realpathSync(root.path),identity:physical(root.path)}));
+    this.configured = snapshot?.configured ?? r.workspaces.map(w => this.describe(w.path,w));
     invariant(this.configured.some(w => w.id === base.workspace.id && w.path === base.workspace.path),'ROUTING_DEFAULT_MISSING');
     invariant(new Set(this.configured.map(w => w.identity)).size === this.configured.length,'ROUTING_DUPLICATE_DIRECTORY');
-    this.version = hash(r);
-    for (const w of this.configured) this.target(w);
+    if(!snapshot)for (const w of this.configured) this.target(w);
+  }
+  get directories(): Directory[] { return [...this.configured,...this.grants.filter(g=>g.version===this.version).map(g=>g.directory)]; }
+  authorizationProfile(): string {
+    const root=this.roots.filter(r=>inside(r.path,this.base.workspace.path)).sort((a,b)=>b.path.length-a.path.length)[0];
+    invariant(root?.profile,'DIRECTORY_NO_PROFILE');return root.profile;
   }
   private authorize(file: string): string {
     const resolved = realpathSync(file);
     invariant(resolved === path.resolve(file) && !lstatSync(file).isSymbolicLink(),'DIRECTORY_SYMLINK');
-    invariant(this.roots.some(r => inside(r.path,resolved) && physical(r.path) === r.identity),'DIRECTORY_UNAUTHORIZED');
+    invariant(this.roots.some(r => inside(r.path,resolved) && physical(r.path) === r.identity) || this.grants.some(g=>g.version===this.version && g.directory.path===resolved && physical(resolved)===g.directory.identity),'DIRECTORY_UNAUTHORIZED');
     // Discovery must not expose control state or authentication/session files.
     for (const root of [this.base.stateRoot,this.base.codex.home,this.base.agent.sessionRoot]) invariant(!inside(root,resolved),'DIRECTORY_PRIVATE');
     return resolved;
   }
-  describe(file: string, explicit = this.base.routing!.workspaces.find(w => path.resolve(w.path) === path.resolve(file))): Directory {
+  describe(file: string, explicit = this.base.routing!.workspaces.find(w => path.resolve(w.path) === path.resolve(file)) ?? this.grants.find(g=>g.version===this.version && g.directory.path===path.resolve(file))?.directory): Directory {
     const resolved = this.authorize(file), identity = physical(resolved);
     const root = this.roots.filter(r => inside(r.path,resolved)).sort((a,b) => b.path.length-a.path.length)[0]!;
-    return {id:explicit?.id ?? 'dir_' + hash([resolved,identity]).slice(0,20),path:resolved,identity,profile:explicit?.profile ?? root.profile ?? '',aliases:explicit?.aliases ?? [],description:explicit?.description ?? ''};
+    return {id:explicit?.id ?? 'dir_' + hash([resolved,identity]).slice(0,20),path:resolved,identity,profile:explicit?.profile ?? root?.profile ?? '',aliases:explicit?.aliases ?? [],description:explicit?.description ?? ''};
+  }
+  propose(file: string, profile: string): Directory {
+    invariant(path.isAbsolute(file) && !/[\x00-\x1f\x7f]/.test(file),'DIRECTORY_PATH');
+    const resolved=realpathSync(file),identity=physical(resolved);
+    invariant(resolved===path.resolve(file) && !lstatSync(file).isSymbolicLink(),'DIRECTORY_SYMLINK');
+    const d:Directory={id:'dir_'+hash([resolved,identity]).slice(0,20),path:resolved,identity,profile,aliases:[],description:''};
+    // Validate private-path/profile boundaries without reading the proposed directory's contents.
+    new Catalog(this.base,[{directory:d,version:this.version}],this).target(d);
+    return d;
   }
   validate(d: Directory): Directory {
     const fresh = this.describe(d.path); invariant(fresh.identity === d.identity,'DIRECTORY_CHANGED');
     invariant(fresh.id === d.id && fresh.profile === d.profile,'DIRECTORY_REVOKED'); return fresh;
   }
-  target(d: Directory): Target {
+  target(d: Directory, execution?: Execution): Target {
     d = this.validate(d);
-    const p = this.base.routing!.profiles.find(p => p.id === d.profile); invariant(p,'DIRECTORY_NO_PROFILE');
+    if(execution)execution=validateExecution(execution);
+    let p = this.base.routing!.profiles.find(p => p.id === d.profile); invariant(p,'DIRECTORY_NO_PROFILE');
+    if(execution?.backend && execution.backend!==(p.backend??this.base.backend)) {
+      const backend=execution.backend,choices=this.base.routing!.profiles.filter(x=>(x.backend??this.base.backend)===backend);
+      invariant(choices.length,'BACKEND_UNAVAILABLE');invariant(choices.length===1,'BACKEND_AMBIGUOUS');p=choices[0]!;
+    }
     const {routing: _routing,...base} = this.base;
     const c = parseConfig({...base,workspace:{id:d.id,path:d.path},backend:p.backend ?? base.backend,agent:{...base.agent,...p.agent},codex:{...base.codex,...p.codex}});
+    if(c.backend==='codex' && (execution?.model || execution?.reasoning)) {
+      if(execution.model)c.codex.model=resolveModel(execution.model,c);
+      if(execution.reasoning)c.codex.reasoning=execution.reasoning;
+      execution={...execution,...(execution.model?{model:c.codex.model}:{})};
+    }
+    if(execution)executable(c);
     preparePaths(c);
     invariant(c.agent.env.HOME && path.isAbsolute(c.agent.env.HOME),'AGENT_HOME_REQUIRED');
     invariant(c.backend === 'codex' ? ['native','external'].includes(c.agent.isolation) : c.agent.isolation === 'external','WORKSPACE_ISOLATION_UNVERIFIED');
@@ -53,7 +80,15 @@ export class Catalog {
     const source=configSources.get(this.base); if(source)invariant(!inside(d.path,source),'CONFIG_IN_WORKSPACE');
     invariant(!inside(d.path,c.agent.env.HOME),'HOME_IN_WORKSPACE');
     for (const root of privatePaths) invariant(!inside(d.path,root) && !inside(root,d.path),'ROUTING_PRIVATE_OVERLAP');
-    return {directory:d,config:c,digest:hash([p.version,c,d.identity])};
+    const identity:unknown[]=[p.version,c,d.identity];
+    if(c.backend==='pi' && (execution?.model || execution?.reasoning))identity.push({model:execution.model,reasoning:execution.reasoning});
+    return {directory:d,config:c,digest:hash(identity),execution};
+  }
+  capabilities(): Array<{backend:string;models:string[];reasoning:string[]}> {
+    return this.base.routing!.profiles.map(p=>{
+      const c={...this.base,backend:p.backend??this.base.backend,agent:{...this.base.agent,...p.agent},codex:{...this.base.codex,...p.codex}};
+      return {backend:c.backend,models:c.backend==='codex'?availableModels(c):[],reasoning:['minimal','low','medium','high','xhigh']};
+    });
   }
   initialScan(): Scan { return {queue:this.roots.map(r => ({path:r.path,depth:0})),deferred:[],matches:[]}; }
   async metadata(d: Directory): Promise<string> {

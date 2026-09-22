@@ -6,8 +6,19 @@ import sharp from 'sharp';
 import { PiBackend } from '../../src/pi.ts';
 import { MediaStore } from '../../src/media.ts';
 import type { SessionRef } from '../../src/types.ts';
+import { Catalog } from '../../src/routing/catalog.ts';
+import { parseRouting } from '../../src/routing/config.ts';
 import { setup, input, eventually } from '../helpers.ts';
 const hooks = {persistSession: async (_ref: SessionRef) => {},progress:()=>{}};
+for(const mode of ['normal','clamp-thinking'])test(`Pi execution selection validates actual RPC state before prompt (${mode})`,async t=>{
+ const h=setup(t,'pi',mode);
+ h.c.routing=parseRouting({roots:[{id:'root',path:h.root,profile:'pi'}],profiles:[{id:'pi',version:'1',backend:'pi'}],workspaces:[{id:'test',path:h.workspace,profile:'pi'}]});
+ const catalog=new Catalog(h.c),target=catalog.target(catalog.configured[0]!,{backend:'pi',model:'terra',reasoning:'high'});
+ const i=input();i.routing={directory:target.directory,digest:target.digest,execution:target.execution,reason:'execution-changed'};
+ const result=await new PiBackend(target.config).run(i,undefined,hooks,new AbortController().signal);
+ if(mode==='clamp-thinking') {assert.equal(result.errorCode,'PI_REASONING_MISMATCH');assert(!existsSync(path.join(h.c.agent.sessionRoot,'capture.json')));}
+ else {assert.equal(result.outcome,'success');assert.equal(result.execution!.model,'test-provider/gpt-5.6-terra');const captured=JSON.parse(readFileSync(path.join(h.c.agent.sessionRoot,'capture.json'),'utf8'));assert.equal(captured.thinkingLevel,'high');}
+});
 test('Pi B01/B02: native image bytes and persisted session resume',async t=>{
  const h=setup(t,'pi'), backend=new PiBackend(h.c),media=new MediaStore(h.c);
  const image=path.join(h.root,'in.png');await sharp({create:{width:2,height:2,channels:3,background:'red'}}).png().toFile(image);

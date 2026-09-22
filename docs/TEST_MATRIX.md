@@ -124,3 +124,19 @@
 `tests/unit/routing.test.ts` 新增 H01–H07、I01–I05：旧版无 cwd 文件、其他项目坏正文、native SQLite cwd 索引/失效路径、超过 8 MiB 流式 UTF-8、活动/半写入会话的读取与恢复分离、坏文件不完整提示、活动绑定不得被当作丢失新建、model/reasoning 匹配；Codex 分类优先、固定安全参数、工具事件拒绝、模型失败不转 worker、路径越权拒绝、HTTP high 参数、关闭时取消分类器。
 
 `smoke:routing` 必须 --live；只验证路由分类与只读 native history，不发送微信或派发 worker。现场观测与离线 doubles 分开记录于 verification.md。
+
+## 组合请求与对话材料交接
+
+`tests/unit/routing.test.ts` 的 PL01–PL13 覆盖：排障材料交给 worker、缺目标切换不伪报成功；未登记目录及模型简称/推理参数组合；换模型独立会话与非法配置不变更状态；只读查询结果反馈模型且不切目录/执行；查询循环/越权；真实图片字节跨新会话复制、原文和来源保留；跨对话/清空上下文隔离；排队配置固定；空结果查询范围；生产入口 CLI 参数与跨重启续接；缺图和 schema 注入拒绝；启动回执去重且不伪造完成时间；重启预检验证排队任务覆盖参数。
+
+PL14 补充目录查询省略 query / query=null：返回默认或切换后的当前目录，不启动 worker、不改变绑定；显式越权路径继续拒绝。
+
+`tests/contract/pi.test.ts` 补充动态模型/推理 RPC 设置以及后端降档时拒绝 prompt。以上默认测试为离线 doubles。`smoke:planner --live` 验证真实中文请求分类、发现未配置目录、terra/high、新会话原生图片交接和实际 turn metadata；合成红图正确回复只证明该样本，不能代替用户截图理解或手机端验收。
+
+## 目录交互授权
+
+`tests/unit/authorization.test.ts` AUTH01–AUTH09 覆盖：完整路径询问且授权前不读元数据/不启动 worker；原请求与确认身份分离、去重；拒绝/含糊回复消耗待授权状态；过期、配置变化、目录替换/符号链接、未送达/unknown/部分送达阻断；对话隔离、精确目录、重启后的执行预检；私有路径拒绝；带图片确认拒绝；历史查询不切目录/执行；模型改变授权目标时拒绝。测试使用离线模型和后端 doubles。
+
+`smoke:authorization --live` 使用真实规划与只读工作 Agent，在临时目录和独立本地 stateRoot 验证两条消息授权与一次执行，不发送微信、不替真实目录授权。
+
+AUTH10–AUTH11 验证新授权目录选择默认工作区 root 的兜底 profile、询问展示模型/推理、重启后保持、显式覆盖优先、既有项目不变；root 未配置 profile 时不继承当前工作区。I03/PL05 的拒绝样本使用夹具私有目录，不依赖 macOS /etc 符号链接。

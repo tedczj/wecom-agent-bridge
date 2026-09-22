@@ -14,7 +14,8 @@ export interface Incoming {
 export interface NormalizedInput {
   taskId: string; messageId: string; route: Route; receivedAt: number;
   text: string; images: ImageRef[]; workspaceId: string; sessionKey: string; generation: number;
-  routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string };
+  originalText?: string; attachmentCount?: number; contextTaskIds?: string[];
+  routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string; execution?: import('./routing/execution.ts').Execution; announce?: boolean; authorizedRequestTaskId?: string };
 }
 export type SessionRef = {
   kind: 'pi'; sessionId: string; sessionFile: string; hasHistory?: boolean;
@@ -22,6 +23,7 @@ export type SessionRef = {
 export interface AgentResult {
   outcome: 'success' | 'failed' | 'cancelled' | 'interrupted';
   finalText: string; errorCode?: string; sessionRef?: SessionRef;
+  execution?: import('./routing/execution.ts').Execution;
 }
 export interface RunHooks {
   persistSession(ref: SessionRef): Promise<void>;

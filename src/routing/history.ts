@@ -90,7 +90,10 @@ export class NativeHistory {
           if(row.type==='event_msg') {
             if(['task_started','turn_started'].includes(p?.type))activity='active';
             if(p?.type==='user_message') {const message=text(p.message);if(message && !title)title=message.slice(0,120);}
-            if(['task_complete','turn_complete'].includes(p?.type) && activity==='active' && text(p.last_agent_message).trim()) {lastResponseAt=time(row.timestamp);activity='idle';}
+            if(['task_complete','turn_complete'].includes(p?.type) && activity==='active' && text(p.last_agent_message).trim()) {
+              lastResponseAt=time(row.timestamp);activity='idle';
+              const final=text(p.last_agent_message);if(preview.at(-1)!==`assistant: ${final}`)append('assistant',final);
+            }
             if(['turn_aborted','error'].includes(p?.type))activity='interrupted';
           }
         } else {

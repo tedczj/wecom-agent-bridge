@@ -5,7 +5,7 @@ export interface ImageRef {
   source: 'message' | 'quote';
 }
 /** Local transport identities are supplied by the operator, never by model output. */
-export interface Route { channelId: string; kind: 'local'; targetId: string; senderId: string }
+export interface Route { channelId: string; kind: 'local' | 'weixin'; targetId: string; senderId: string }
 export interface LocalImage { path: string; source: 'message' | 'quote' }
 export interface Incoming {
   messageId: string; route: Route; reqId: string; text: string;

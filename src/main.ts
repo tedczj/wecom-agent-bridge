@@ -8,10 +8,10 @@ import { MediaStore } from './media.ts';
 import { CodexBackend } from './codex.ts';
 import { PiBackend } from './pi.ts';
 import { Bridge } from './bridge.ts';
-import { LocalChannel } from './local.ts';
+import { LocalChannel, normalize } from './local.ts';
 import { OutboxPump } from './reply.ts';
 import { invariant, log } from './errors.ts';
-import type { AgentBackend } from './types.ts';
+import type { AgentBackend, Channel } from './types.ts';
 export function createBackend(c: Config, media: MediaStore): AgentBackend {
   return c.backend === 'codex' ? new CodexBackend(c, image => media.read(image)) : new PiBackend(c, image => media.read(image));
 }
@@ -20,7 +20,12 @@ export interface LocalService {
   accept(frame: unknown): Promise<{taskId?: string; duplicate?: boolean; rejected?: string}>;
   settle(): Promise<void>; stop(): Promise<void>;
 }
-export async function openService(c: Config, output: Writable): Promise<LocalService> {
+export interface TransportAdapter {
+  channel: Channel;
+  normalize: typeof normalize;
+  initialize(store: Store): Promise<void>;
+}
+export async function openService(c: Config, output: Writable, transport?: TransportAdapter): Promise<LocalService> {
   process.umask(0o077); preparePaths(c);
   invariant(c.agent.env.HOME && path.isAbsolute(c.agent.env.HOME), 'AGENT_HOME_REQUIRED');
   invariant(c.backend === 'codex' ? ['native','external'].includes(c.agent.isolation) : c.agent.isolation === 'external', 'WORKSPACE_ISOLATION_UNVERIFIED');
@@ -30,9 +35,14 @@ export async function openService(c: Config, output: Writable): Promise<LocalSer
   try {
     invariant(!existsSync(path.join(c.stateRoot, 'agent-process.json')), 'AGENT_PROCESS_REVIEW_REQUIRED');
     store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c);
+    const oldTransport = store.db.prepare("SELECT value FROM metadata WHERE key='transport'").get() as {value:string} | undefined;
+    invariant((oldTransport?.value ?? 'local') === c.transport || (!oldTransport && !store.db.prepare('SELECT 1 FROM jobs LIMIT 1').get()), 'STATE_TRANSPORT_MISMATCH');
+    invariant(!!transport === (c.transport === 'weixin'), 'TRANSPORT_MISMATCH');
+    store.db.prepare("INSERT OR IGNORE INTO metadata(key,value) VALUES ('transport',?)").run(c.transport);
+    await transport?.initialize(store);
     const media = new MediaStore(c), channel = new LocalChannel(output), backend = createBackend(c, media);
-    bridge = new Bridge(c, `local:${c.backend}`, store, channel, backend, media);
-    const outbox = new OutboxPump(store, channel, c.reply);
+    bridge = new Bridge(c, `${c.transport}:${c.backend}`, store, transport?.channel ?? channel, backend, media, transport?.normalize);
+    const outbox = new OutboxPump(store, transport?.channel ?? channel, c.reply);
     bridge.start(); await media.gc(store.activeMedia());
     tick = setInterval(() => void outbox.tick().catch(() => log('outbox.error', {code:'OUTBOX_FAILURE'})), 100);
     gc = setInterval(() => void media.gc(store!.activeMedia()).catch(() => log('media.gc_error', {code:'MEDIA_GC_FAILED'})), 3600000);

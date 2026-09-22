@@ -3,6 +3,7 @@ import path from 'node:path';
 import { invariant, record } from './errors.ts';
 import { inside, privateDirectory } from './fsutil.ts';
 export interface Config {
+  transport: 'local' | 'weixin';
   backend: 'codex' | 'pi'; workspace: { id: string; path: string }; stateRoot: string;
   local: { actorId: string; maxInputBytes: number };
   queue: { maxActive: 1; maxPendingPerSession: number; maxPendingGlobal: number };
@@ -26,7 +27,8 @@ function absolute(v: unknown): string {
 }
 function bool(v: unknown, fallback: boolean): boolean { invariant(v === undefined || typeof v === 'boolean', 'CONFIG_BOOLEAN'); return (v ?? fallback) as boolean; }
 export function parseConfig(value: unknown): Config {
-  const c = strict(value, ['backend', 'workspace', 'stateRoot', 'local', 'queue', 'media', 'agent', 'reply', 'codex']);
+  const c = strict(value, ['transport', 'backend', 'workspace', 'stateRoot', 'local', 'queue', 'media', 'agent', 'reply', 'codex']);
+  const transport = c.transport ?? 'local'; invariant(transport === 'local' || transport === 'weixin', 'TRANSPORT_NOT_IMPLEMENTED');
   const backend = c.backend ?? 'codex'; invariant(backend === 'codex' || backend === 'pi', 'BACKEND_NOT_IMPLEMENTED');
   const w = strict(c.workspace, ['id', 'path']), stateRoot = absolute(c.stateRoot);
   const workspace = { id: str(w.id), path: absolute(w.path) };
@@ -57,7 +59,7 @@ export function parseConfig(value: unknown): Config {
   invariant(['unverified', 'external', 'native'].includes(String(isolation)), 'CONFIG_ISOLATION');
   const r = strict(c.reply ?? {}, ['chunkBytes', 'minIntervalMs', 'maxAutoParts', 'maxResultBytes', 'sendTimeoutMs']);
   return {
-    backend, workspace, stateRoot, local: { actorId, maxInputBytes: integer(l.maxInputBytes, 131072, 256, 1048576) },
+    transport, backend, workspace, stateRoot, local: { actorId, maxInputBytes: integer(l.maxInputBytes, 131072, 256, 1048576) },
     queue: { maxActive: 1, maxPendingPerSession: integer(q.maxPendingPerSession, 3, 1, 100), maxPendingGlobal: integer(q.maxPendingGlobal, 20, 1, 1000) },
     media: { maxImages: integer(m.maxImages, 4, 1, 4), maxImageBytes: integer(m.maxImageBytes, 10485760, 64, 20971520), maxTotalBytes: integer(m.maxTotalBytes, 20971520, 64, 41943040), maxPixels: integer(m.maxPixels, 20000000, 1, 40000000), maxTotalPixels: integer(m.maxTotalPixels, 40000000, 1, 80000000), retentionHours: integer(m.retentionHours, 24, 1, 168) },
     agent: { command: absolute(a.command), args, env: env as Record<string,string>, passEnv, sessionRoot,

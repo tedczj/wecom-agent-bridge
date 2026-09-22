@@ -11,12 +11,12 @@ export class Bridge {
   private wakeAgain = false;
   private active?: {id: string; controller: AbortController};
   private preparing = new Map<string, {controller: AbortController; promise: Promise<void>}>();
-  constructor(private c: Config, private channelId: string, readonly store: Store, private channel: Channel, private backend: AgentBackend, private media: MediaProvider) {}
+  constructor(private c: Config, private channelId: string, readonly store: Store, private channel: Channel, private backend: AgentBackend, private media: MediaProvider, private normalizer: typeof normalize = normalize) {}
   start(): void { this.store.recover(); this.stopped = false; this.kick(); }
   async accept(frame: unknown): Promise<{taskId?: string; duplicate?: boolean; rejected?: string}> {
     if (this.stopped) return { rejected: 'STOPPING' };
     let incoming;
-    try { incoming = normalize(frame, this.c, this.channelId); }
+    try { incoming = this.normalizer(frame, this.c, this.channelId); }
     catch (e) { const code = errorCode(e, 'INVALID_MESSAGE'); log('input.rejected', { code }); return { rejected: code }; }
     const control = incoming.text.startsWith('/');
     let reserved;

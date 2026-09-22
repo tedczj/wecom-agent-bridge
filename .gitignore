@@ -10,3 +10,11 @@ runtime/
 state/
 coverage/
 .DS_Store
+
+# Authentication and process state, even if a local stateRoot is inside the repo.
+auth.json
+weixin-auth.json
+weixin-auth.json.*.tmp
+instance.lock
+agent-process.json
+weixin-incoming/

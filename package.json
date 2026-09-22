@@ -3,7 +3,7 @@
   "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Durable local JSONL bridge for Codex CLI and Pi RPC",
+  "description": "Durable personal Weixin and local JSONL bridge for Codex CLI and Pi RPC",
   "engines": {
     "node": ">=22.16.0 <23 || >=24"
   },
@@ -20,10 +20,12 @@
     "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi"
   },
   "dependencies": {
+    "qrcode-terminal": "0.12.0",
     "sharp": "0.34.1"
   },
   "devDependencies": {
     "@types/node": "22.15.33",
+    "@types/qrcode-terminal": "0.12.2",
     "typescript": "5.8.3"
   }
 }

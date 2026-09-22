@@ -1,12 +1,33 @@
 # Implementation choices
 
-- The local normalizer and stdout channel replace the removed SDK-specific transport, not emulate enterprise-chat frames. Old credentials, remote URLs/AES descriptors and network smoke are absent.
-- Codex uses the official CLI exec JSONL wire contract directly. This avoids adding an SDK dependency only to wrap the same executable and gives this adapter explicit process-group ownership, framing limits and sanitized stderr handling. No upstream source was copied verbatim into the new Codex implementation.
-- Pi remains selectable with `backend: "pi"`; production factory no longer hardcodes Pi.
-- Existing queue/session/outbox concepts are retained. Database version is intentionally incremented to 2; old tasks are never automatically migrated from a removed transport.
-- Codex forced cancellation normally becomes `interrupted`, not `cancelled`, even when group termination succeeds. This is deliberate: exec has no acknowledged RPC cancel/settled handshake here, and prior effects or detached work cannot be assumed absent.
-- The supported execution platform is POSIX (macOS/Linux). Windows fails explicitly; no false claim that killing one PID terminates the Windows process tree.
-- Runtime dependency is only sharp. TypeScript and Node type definitions are development dependencies. The lockfile is pruned from the repository's original pinned-dependencies artifact, preserving registry URLs, integrity hashes and cross-platform optional sharp packages.
-- Offline tests launch executable deterministic doubles under `tests/fakes/`; normal production code never selects a fake on its own. These validate protocol/process behavior, not the Codex binary's own sandbox or live model behavior.
-- CLI examples and strict configuration are in README. Live smoke is opt-in and rejects invocation without `--live` before creating an Agent service.
-- Original scope-specific tests are explicitly retired or mapped in TEST_MATRIX.md. Test success counts are execution evidence, not a percentage of production readiness.
+## Shared execution and delivery
+
+Both transports use the same Bridge, SQLite Store, MediaStore and durable outbox. Local frames are normalized against the configured actor; Weixin frames are checked against the QR-paired bot/user before they can reach the Bridge. Transport and account identity are pinned before worker startup. v1 state is rejected, and existing tasks are not translated across transports.
+
+Execution completion and message delivery are separate. An uncertain Agent stop blocks future work; an uncertain send becomes `unknown` and is not automatically repeated. `/result` reads saved output without invoking an Agent. Each stateRoot owns a single worker and lock; there is no cross-stateRoot filesystem mutex.
+
+## Personal Weixin
+
+The adapter uses native fetch and the iLink protocol directly. No OpenClaw runtime or enterprise WeCom SDK is installed. Runtime packages are sharp for image validation and qrcode-terminal for local QR rendering.
+
+API requests use restricted HTTPS origins, no redirects, bounded bodies and deadlines. `getupdates` and `sendmessage` accept omitted or numeric-zero success codes, reject malformed or nonzero codes, and handle expired authentication separately. This distinction was verified against an authenticated live response and is covered by W13/W14.
+
+Incoming uint64 message IDs remain strings. Accepted requests are durable before their poll cursor is saved; redelivery passes through deduplication. Image URL/key material stays in memory, while staged private files pass through the existing decode/hash/budget checks. Voice uses only the supplied transcript. Files, video, quotes and voice without transcription receive explicit responses instead of partial execution.
+
+Text replies use the paired owner's latest context token and the durable outbox. Weixin does not send the local transport's preliminary receipt; the persisted final/control result is the reply. No raw frames, auth/context tokens or model output are written to diagnostic logs.
+
+## Agent backends and lifecycle
+
+Codex uses the installed CLI's exec JSONL protocol, with an explicit working directory, sandbox and thread ID on resume. Successful completion requires ordered events, final assistant text, turn.completed, exit 0 and confirmed owned-process-group cleanup. Temporary EPERM during teardown is accepted only after the group actually disappears. Forced cancellation remains interrupted because side effects may exist.
+
+Pi uses the installed RPC executable and waits for agent_settled. Extensions cannot auto-approve UI requests. Pi requires operator-verified external isolation; POSIX process-group control supports macOS/Linux, not Windows process-tree management.
+
+`start.sh` installs missing/mismatched dependencies, builds, validates the previous instance's PID/start time/command/lock token, stops that instance and execs the selected transport. It uses TERM then bounded KILL escalation, without clearing Agent process markers or acknowledging side effects. A mismatching live PID is not killed.
+
+## Protocol sources and validation boundaries
+
+- Tencent/openclaw-weixin: [`24de5c9eb0dd5e595d7e2d090ed8a3f82870d42c`](https://github.com/Tencent/openclaw-weixin/tree/24de5c9eb0dd5e595d7e2d090ed8a3f82870d42c), API/auth/media types and [protocol guide](https://github.com/Tencent/openclaw-weixin/blob/24de5c9eb0dd5e595d7e2d090ed8a3f82870d42c/docs/protocol_zh_CN.md). Compatibility headers use the inspected 2.4.9 version; bot_agent identifies LocalAgentBridge/0.2.0. These client observations are not an immutable server contract.
+- OpenAI Codex protocol baseline: `639d2478cc2e16d6ca715952d2e726a3aecc024e`, sdk/typescript/src/exec.ts, sdk/typescript/src/events.ts and codex-rs/exec/src/cli.rs.
+- Adapter code was independently written; upstream implementation source was not copied. Dependency licenses and this repository's LICENSE remain in force.
+
+Offline tests launch deterministic child doubles; they do not establish real model quality, visual correctness or OS sandbox enforcement. Actual evidence and its limits are recorded in [verification.md](verification.md).

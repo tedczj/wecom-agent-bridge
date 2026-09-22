@@ -8,8 +8,10 @@ import { Store } from './store.ts';
 import { JsonlFramer } from './rpc-jsonl.ts';
 import { acquireLock, clearStaleLock, processAlive } from './fsutil.ts';
 import { errorCode, invariant, log } from './errors.ts';
+import { runWeixin } from './weixin.ts';
 const help = `Local Agent Bridge (Codex / Pi)
 Usage:
+  node dist/src/cli.js start --config FILE
   node dist/src/cli.js run --config FILE --message TEXT [--image FILE ...] [--session NAME] [--id ID]
   node dist/src/cli.js run --config FILE --stdin [--image FILE ...] [--session NAME] [--id ID]
   node dist/src/cli.js serve --config FILE
@@ -24,7 +26,7 @@ Exit codes: 0 success, 1 rejected/failed, 2 interrupted/nonterminal/undelivered,
 interface Args {command: string; options: Map<string,string[]>; flags: Set<string>}
 export function parseArgs(args: string[]): Args {
   const [command = 'help', ...rest] = args;
-  invariant(['help','--help','run','serve','status','result','review'].includes(command), 'CLI_COMMAND');
+  invariant(['help','--help','start','run','serve','status','result','review'].includes(command), 'CLI_COMMAND');
   const options = new Map<string,string[]>(), flags = new Set<string>();
   const allowed = command === 'run' ? ['--config','--message','--image','--session','--id']
     : command === 'result' ? ['--config','--task'] : ['--config'];
@@ -77,6 +79,14 @@ export async function runCli(argv = process.argv.slice(2)): Promise<number> {
   const one = (k: string) => args.options.get(k)?.[0];
   invariant(one('--config'), 'CONFIG_ARGUMENT_REQUIRED');
   const c = loadConfig(one('--config')!);
+  if (args.command === 'start' && c.transport === 'weixin') {
+    const controller = new AbortController();
+    const stop = () => controller.abort();
+    process.once('SIGINT',stop); process.once('SIGTERM',stop);
+    try { await runWeixin(c,process.stdout,controller.signal); return 0; }
+    catch(e) { if (controller.signal.aborted) return 130; throw e; }
+    finally { process.removeListener('SIGINT',stop); process.removeListener('SIGTERM',stop); }
+  }
   if (args.command === 'status' || args.command === 'result') {
     if (args.command === 'result') invariant(one('--task'), 'TASK_ID_INVALID');
     process.stdout.write(JSON.stringify(inspect(c, one('--task'))) + '\n'); return 0;

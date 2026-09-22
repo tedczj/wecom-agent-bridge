@@ -53,15 +53,36 @@ CODEX_HOME=/your/codex-home codex login
 
 Pi 的本地配置参考 [config.pi.example.json](config.pi.example.json)。Pi 必须已有经过验证的外部隔离，才能把 `agent.isolation` 设为 `external`；更改该字段本身不提供隔离。
 
+若要在已有微信配对上切换 Pi，准备私有的 `config.pi.weixin.local.json`：设置 `transport: "weixin"`、`backend: "pi"`，沿用 `config.local.json` 的 `workspace`、`local.actorId` 和 `stateRoot`，配置实际 Pi 可执行文件或隔离包装器，并使用独立的 `agent.sessionRoot`。这样复用配对、游标和消息去重记录；Pi 与 Codex 的对话上下文分别保存。本地 smoke 仍用独立 stateRoot 的 `config.pi.local.json`。
+
+配置文件各自用途如下；仓库仅发布占位模板，`*.local.json` 由操作者在本机创建并保持私有。
+
+| 文件 | 用途 |
+|---|---|
+| `config.example.json` | Codex 微信配置模板 |
+| `config.pi.example.json` | Pi 本地配置模板，可按上述约定配置微信入口 |
+| `config.local.json` | Codex 微信运行配置；默认启动和 `--backend codex` 使用 |
+| `config.pi.weixin.local.json` | Pi 微信运行配置；`--backend pi` 使用 |
+| `config.cli.local.json` | Codex 本地 CLI / live smoke，使用独立状态目录 |
+| `config.pi.local.json` | Pi 本地 CLI / live smoke，使用独立状态目录 |
+
+无需保留切换前的配置副本。`tsconfig.json` 是构建配置，不能作为 Agent 配置传给启动脚本。
+
 ## 启动和微信测试
 
 ```bash
 ./start.sh
+# 切换现有微信实例到 Pi / 切回 Codex
+./start.sh --backend pi
+./start.sh --backend codex
 # 或指定配置文件
 ./start.sh /absolute/path/to/config.local.json
+./start.sh --backend pi /absolute/path/to/pi-config.json
 ```
 
-脚本默认读取仓库中的 `config.local.json`，缺少或不匹配依赖时运行 `npm ci`，每次启动前构建。同一配置已有实例时，核对实例锁、PID 与启动命令，发送 SIGTERM；15 秒未退出再发送 SIGKILL，等待最多 5 秒，确认退出后再启动。按 Ctrl-C 停止。
+脚本默认读取仓库中的 `config.local.json`；`--backend pi` 默认选择 `config.pi.weixin.local.json`，`--backend codex` 选择 `config.local.json`。显式指定文件时，后端参数必须与文件一致，不会改写配置。缺少或不匹配依赖时运行 `npm ci`，每次启动前构建。
+
+已有实例时，核对实例锁、PID 与启动命令，发送 SIGTERM；15 秒未退出再发送 SIGKILL，等待最多 5 秒，确认退出后再启动。跨配置替换必须显式指定 `--backend`，且状态目录、工作目录、操作者与 transport 一致。其他后端有未完成任务时拒绝切换；不迁移、不重跑任务。按 Ctrl-C 停止。
 
 首次微信启动会显示二维码。用手机微信扫描并确认绑定；如果提示验证码，在终端输入手机显示的数字。看到“微信接收已启动”后，在手机 **ClawBot 私聊**发送：
 
@@ -131,6 +152,8 @@ npm run bridge -- review --config config.local.json --acknowledge-side-effects
 | `WEIXIN_VERIFY_REQUIRES_TERMINAL` | 首次绑定时在交互终端启动并输入手机验证码 |
 | `STATE_TRANSPORT_MISMATCH` / `WEIXIN_ACCOUNT_MISMATCH` | 配置与已有状态不匹配，使用对应配置或新状态目录 |
 | `RESTART_PROCESS_MISMATCH` | 实例锁指向的进程不符合当前启动命令；脚本拒绝终止它，需人工核对 |
+| `START_BACKEND_MISMATCH` | `--backend` 与所选配置的 `backend` 不一致，修正参数或配置 |
+| `BACKEND_SWITCH_BUSY` | 其他后端有未完成任务；先使用原配置处理任务，再切换 |
 | `AGENT_PROCESS_REVIEW_REQUIRED` / `WORKSPACE_BLOCKED` | 按上述检查和 review 流程处理，不自动清除执行不确定性 |
 
 退出码：`0` 正常完成，`1` 接收或执行失败，`2` 单次任务非终态/执行不确定/输出未确认，`130` 收到终止信号。持续模式每条任务的结果以 SQLite 和回复为准。

@@ -2,14 +2,14 @@
 
 验证日期：2026-09-22。本文覆盖当前个人微信与本地入口版本；旧阶段的失败日志和报告由 Git 历史保留，不再作为当前说明叠加。
 
-## 本次发布前检查
+## 当前本地检查
 
 环境：macOS / Darwin arm64、Node v25.1.0、npm 11.6.2。
 
 | 检查 | 结果 | 证据 |
 |---|---|---|
 | `npm ci --no-audit --no-fund` | exit 0，从当前 lockfile 安装 | [install.txt](evidence/install.txt) |
-| `npm run check` | exit 0；类型检查、构建、109 tests；0 failed / cancelled / skipped | [check.txt](evidence/check.txt) |
+| `npm run check` | exit 0；类型检查、构建、111 tests；0 failed / cancelled / skipped | [check.txt](evidence/check.txt) |
 | `npm run smoke:codex` 不带 `--live` | 预期 exit 1，LIVE_OPT_IN_REQUIRED；未调用模型 | [smoke-opt-in.txt](evidence/smoke-opt-in.txt) |
 | `bash -n start.sh` | 通过 | 本地执行 |
 | 构建/测试输入校验 | SHA-256 清单 | [source-manifest.sha256](source-manifest.sha256) |
@@ -18,16 +18,20 @@
 
 ## 已观察到的真实链路
 
-- 安装的 Codex CLI 0.155.1：显式 `--live` smoke exit 0，两轮问答通过，跨进程恢复上下文通过，会话引用一致。该结果来自本会话此前执行，发布前没有再次消费模型额度。
+- 安装的 Codex CLI 0.155.1：显式 `--live` smoke exit 0，两轮问答通过，跨进程恢复上下文通过，会话引用一致。该结果来自此前执行，本次提交前未重复调用真实模型。
+- 本机 Pi 源码版本 0.87.0、revision `95fbc04997eaee961eb673fa7923e9220609ebd5`：通过私有包装器启动 RPC，`get_state` 报告配置模型 `openai-codex / gpt-5.6-sol`、空闲状态。配置接入时 `npm run smoke:pi -- --live --config config.pi.local.json` exit 0，真实两轮问答、跨进程上下文恢复和相同会话引用通过；完成判定包含 `agent_settled`。模型名称是运行时配置报告，不是最终服务端模型路由证明。
+- 本机 Pi 包装器在 macOS `sandbox-exec` 中运行，仅开放 read/grep/find/ls 工具，关闭扩展自动发现。真实非模型探针确认：工作目录和运行目录外写入被拒绝、微信认证文件读取被拒绝、本地端口监听被拒绝、私有临时目录可写。允许模型网络访问及 Pi 认证刷新/配置锁；这些有限检查不代表完整 OS 隔离、凭据隔离或外部副作用清理。包装器和本机路径保持私有，不属于仓库的可移植部署产物。
+- `./start.sh --backend pi` 已停止原 Codex bridge 并启动 Pi 配置的微信接收循环，复用原 stateRoot 和登录，无需重新扫码。提交前核查的运行实例仍使用 Pi 微信配置。
 - 微信真实二维码接口返回成功，终端二维码实际渲染。用户已完成手机绑定，凭据复用成功。
 - 认证后的 getupdates 响应实际省略 ret 和 errcode。适配器现接受省略或数值零，仍拒绝非零及非法类型；W13/W14 覆盖收消息、Agent 执行、回复 ACK 和游标持久化。
-- 本次文档核查时，只读 SQLite 汇总显示 **3 个任务 succeeded、3 条 outbox sent，其中 1 个任务带图片**，轮询游标已持久化。此处只记录汇总，不包含账号 ID、消息、模型回答、图片、任务 ID 或数据库文件。
+- 本次提交前只读 SQLite 汇总显示 **Codex 3 个任务 succeeded、Pi 2 个任务 succeeded，共 5 条 outbox sent**；其中 Codex 1 个、Pi 2 个任务带图片。Pi 已观察到真实微信接收、模型执行及回复发送 ACK，轮询游标已持久化。此处只记录汇总，不包含账号 ID、消息、模型回答、图片、任务 ID 或数据库文件。
 - outbox sent 表示 iLink 发送接口返回合法成功响应，不表示用户已经阅读，也不是对图片理解准确性的评价。
 
 ## 尚未验收的能力
 
 - 实际语音是否附带转写以及转写质量；没有转写时未配置额外 ASR。
 - 图片内容理解的人工准确性验收；目前有字节传输测试与现场带图任务成功记录。
+- Pi 的图片理解准确性、真实取消和手机端实际显示尚未验收；已有带图任务成功及发送 ACK 记录，当前本地配置仅开放读取工具。
 - 实际 Codex 沙箱强度、代码修改质量、真实模型取消后的所有外部副作用清理、脱离进程组的守护程序。
 - 本次提交对应的 Linux/macOS CI 结果须以远端 workflow 为准；本地 macOS 测试不替代远端结果。
 

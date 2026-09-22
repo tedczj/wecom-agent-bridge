@@ -22,7 +22,7 @@ Codex uses the installed CLI's exec JSONL protocol, with an explicit working dir
 
 Pi uses the installed RPC executable and waits for agent_settled. Extensions cannot auto-approve UI requests. Pi requires operator-verified external isolation; POSIX process-group control supports macOS/Linux, not Windows process-tree management.
 
-`start.sh` installs missing/mismatched dependencies, builds, validates the previous instance's PID/start time/command/lock token, stops that instance and execs the selected transport. It uses TERM then bounded KILL escalation, without clearing Agent process markers or acknowledging side effects. A mismatching live PID is not killed.
+`start.sh` installs missing/mismatched dependencies, builds, validates the previous instance's PID/start time/command/lock token, stops that instance and execs the selected transport. `--backend pi` selects the private Pi Weixin config; `--backend codex` selects the default config. An explicit config must match the requested backend. Cross-config replacement additionally requires explicit backend selection and matching canonical state/workspace paths, workspace ID, actor and transport. Foreign-backend unfinished jobs are checked before stopping and again after shutdown, including when only a stale lock remains. It uses TERM then bounded KILL escalation, without clearing Agent process markers or acknowledging side effects. A mismatching live PID is not killed. Shared Weixin state preserves authentication, cursor and deduplication; backend-specific session keys and homes keep conversations separate.
 
 ## Protocol sources and validation boundaries
 

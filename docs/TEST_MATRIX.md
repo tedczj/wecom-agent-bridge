@@ -35,7 +35,7 @@
 | P11 | 父环境凭据隔离 | unit/core P11 + contract/codex C17；改用通用父进程秘密，无旧 transport 常量。 |
 | P12 | 历史会话丢失/未保存会话 | contract/pi P12。 |
 | B01 | 原生图片输入 | unit/media、Codex C02、Pi B01、微信 W07 验证字节传递；现场带图任务成功不代表视觉语义正确。 |
-| B02 | 两轮会话复用 | Codex C01、Pi B02、CLI01、微信 W06；真实 Codex 两轮 smoke 的结果单独记录。 |
+| B02 | 两轮会话复用 | Codex C01、Pi B02、CLI01、微信 W06；真实 Codex / Pi 两轮 smoke 的结果单独记录。 |
 | B03 | 新会话清除上下文映射 | contract/codex C04 + e2e/bridge /new。 |
 | B04 | 空结果/拒绝/工具错误 | empty final、错误 stopReason、非答案事件测试。真实模型拒绝/工具失败的业务语义未 live 验证。 |
 | B05 | 取消与实际子孙进程停止 | contract/codex C12–C14 + contract/pi B05 + CLI05；脱离进程组的守护程序仍属人工/外部隔离边界。 |
@@ -84,6 +84,6 @@
 | W13 | 收发响应允许省略成功码，仍拒绝非法及非零错误码 |
 | W14 | 省略成功码时完整接收、执行、回复确认和游标链路 |
 
-`tests/e2e/start.test.ts` 验证其他 cwd、含空格配置路径、平滑替换、SIGSTOP 后 SIGKILL 升级、残留锁恢复、JSONL stdout 和拒绝终止无关 PID。
+`tests/e2e/start.test.ts` 验证其他 cwd、含空格配置路径、平滑替换、SIGSTOP 后 SIGKILL 升级、残留锁恢复、JSONL stdout、拒绝终止无关 PID、显式后端来回切换时保留共享状态、配置不匹配时不终止原实例，以及无存活实例时仍拒绝把排队任务交给其他后端。
 
 默认测试不连接真实模型或微信账号。图片理解、语音转写质量、实际沙箱以及脱离进程组的守护程序清理需要独立验收。

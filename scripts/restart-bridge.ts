@@ -5,12 +5,27 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { loadConfig, preparePaths } from '../src/config.ts';
 import { clearStaleLock, processAlive } from '../src/fsutil.ts';
 import { errorCode, invariant } from '../src/errors.ts';
+import { Store } from '../src/store.ts';
 
-// Only stop the instance launched with this exact CLI and configuration.
+// Only stop this CLI's instance with the same verified state and owner.
 async function main(): Promise<void> {
-  const [configFile, cliFile] = process.argv.slice(2);
+  const [configFile, cliFile, backend] = process.argv.slice(2);
   invariant(configFile && cliFile, 'RESTART_ARGUMENT');
-  const c = loadConfig(configFile); preparePaths(c);
+  const c = loadConfig(configFile);
+  invariant(!backend || backend === c.backend, 'START_BACKEND_MISMATCH');
+  preparePaths(c);
+  // Check even without a live lock: queued work must not cross backend boundaries.
+  const safeToSwitch = () => {
+    const dbFile = path.join(c.stateRoot, 'bridge.sqlite');
+    if (!existsSync(dbFile)) return;
+    const store = new Store(dbFile, c, true);
+    try {
+      const foreign = store.db.prepare(`SELECT 1 FROM jobs j JOIN sessions s USING(session_key)
+        WHERE s.backend != ? AND j.status IN ('preparing','queued','running','cancel_requested') LIMIT 1`).get(c.backend);
+      invariant(!foreign, 'BACKEND_SWITCH_BUSY');
+    } finally { store.close(); }
+  };
+  safeToSwitch();
   const lockFile = path.join(c.stateRoot, 'instance.lock');
   if (!existsSync(lockFile)) return;
   invariant(!lstatSync(lockFile).isSymbolicLink(), 'UNSAFE_LOCK');
@@ -22,7 +37,17 @@ async function main(): Promise<void> {
       catch { return ''; }
     };
     const original = identity();
-    invariant(['serve','start'].some(command => original.endsWith(` ${cliFile} ${command} --config ${configFile}`)), 'RESTART_PROCESS_MISMATCH');
+    const prefix = ['serve','start'].map(command => ` ${cliFile} ${command} --config `).find(value => original.includes(value));
+    invariant(prefix, 'RESTART_PROCESS_MISMATCH');
+    const previousFile = original.slice(original.indexOf(prefix) + prefix.length);
+    if (previousFile !== configFile) {
+      // A different config is accepted only for an explicit backend selection.
+      invariant(backend && path.isAbsolute(previousFile) && existsSync(previousFile), 'RESTART_PROCESS_MISMATCH');
+      const previous = loadConfig(previousFile); preparePaths(previous);
+      invariant(previous.stateRoot === c.stateRoot && previous.workspace.path === c.workspace.path &&
+        previous.workspace.id === c.workspace.id && previous.local.actorId === c.local.actorId &&
+        previous.transport === c.transport, 'RESTART_PROCESS_MISMATCH');
+    }
     const signal = (value: NodeJS.Signals) => {
       if (!processAlive(lock.pid)) return;
       invariant(identity() === original, 'RESTART_PROCESS_MISMATCH');
@@ -48,6 +73,7 @@ async function main(): Promise<void> {
   }
   // Do not acknowledge uncertain Agent effects on behalf of the operator.
   invariant(!existsSync(path.join(c.stateRoot, 'agent-process.json')), 'AGENT_PROCESS_REVIEW_REQUIRED');
+  safeToSwitch();
 }
 main().catch(e => {
   process.stderr.write(`Bridge restart failed: ${errorCode(e)}\n`);

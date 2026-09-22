@@ -30,6 +30,7 @@ if (mode === 'startup-hang') { setInterval(() => {}, 1000); }
 else if (mode === 'malformed') { process.stdout.write('{bad\n'); }
 else if (mode === 'oversized') { process.stdout.write('x'.repeat(1024*1024)); }
 else if (mode === 'truncated') { process.stdout.write('{"type":"thread.started"'); }
+else if (mode === 'truncated-late-exit') { process.stdout.end('{"type":"thread.started"'); setTimeout(() => {}, 150); }
 else if (mode === 'bad-order') { emit({type:'turn.completed',usage:{}}); }
 else {
   emit({type:'thread.started',thread_id:id});

@@ -1,0 +1,168 @@
+
+> local-agent-bridge@0.2.0 check
+> npm run typecheck && npm test
+
+
+> local-agent-bridge@0.2.0 typecheck
+> tsc --noEmit -p tsconfig.json
+
+
+> local-agent-bridge@0.2.0 test
+> npm run build && node --test dist/tests/unit/*.test.js dist/tests/contract/*.test.js dist/tests/e2e/*.test.js
+
+
+> local-agent-bridge@0.2.0 build
+> tsc -p tsconfig.json
+
+(node:20429) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ C01/B02: actual exec child, final result, persistent thread and explicit resume (93.107958ms)
+✔ C02/B01: real image bytes reach the exec child through --image (44.654042ms)
+✔ C03: stored-image tampering fails before process creation (6.024709ms)
+✔ C04/B03: no saved reference creates a distinct thread (81.67325ms)
+✔ C05: final event alone does not settle before the child exits (191.044375ms)
+✔ C06: ack-only cannot be reported as successful (38.1295ms)
+✔ C06: exit-error cannot be reported as successful (37.962209ms)
+✔ C06: malformed cannot be reported as successful (51.482625ms)
+✖ C06: truncated cannot be reported as successful (39.165208ms)
+✔ C06: bad-order cannot be reported as successful (50.119542ms)
+✔ C06: duplicate-terminal cannot be reported as successful (47.627291ms)
+✔ C07/P08: oversized output is bounded and the process is cleaned up (51.978083ms)
+✔ C08/B04/D08: failed turn and auth failure return codes, never raw error/secret (76.920458ms)
+✔ C09/B04: empty final is a failure; reasoning/tool outputs are not answers (37.925083ms)
+✔ C10: resume mismatch blocks, without saving the wrong reference (49.758417ms)
+✔ C11/B06: thread persistence failure is uncertain, not an automatic retry (47.646292ms)
+✔ C12/B05: cancellation stops real writes and conservatively blocks uncertain work (158.549417ms)
+✔ C13/B05: SIGTERM-ignoring child is escalated; stop() waits for cleanup (225.882084ms)
+✔ C14/B05: owned grandchild writer stops or cleanup remains explicitly unknown (238.697958ms)
+✔ C15: startup and task timeouts are finite and never pretend the task succeeded (95.466542ms)
+✔ C16: pre-cancelled input and unavailable executable do not launch a child (1.810333ms)
+✔ C17: prompt injection stays stdin data; no shell interpolation, no parent secret (39.005875ms)
+✔ C18: overlapping run calls are rejected rather than corrupting ownership (1.59475ms)
+(node:20430) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ Pi B01/B02: native image bytes and persisted session resume (132.66925ms)
+✔ Pi P03/P04/P09: delayed never completes on ACK, agent_end or stale events (173.315708ms)
+✔ Pi P03/P04/P09: retry never completes on ACK, agent_end or stale events (168.994709ms)
+✔ Pi P03/P04/P09: stale never completes on ACK, agent_end or stale events (65.81475ms)
+✔ Pi P05/P06/P07/B04: error (60.214792ms)
+✔ Pi P05/P06/P07/B04: reject (46.489458ms)
+✔ Pi P05/P06/P07/B04: session-cancel (47.767333ms)
+✔ Pi P05/P06/P07/B04: empty (58.972375ms)
+✔ Pi P08/P10: exit is not successful or automatically approved (37.562291ms)
+✔ Pi P08/P10: malformed is not successful or automatically approved (46.757791ms)
+✔ Pi P08/P10: ui is not successful or automatically approved (47.933333ms)
+✔ Pi P12/B06: missing historical file fails; unsaved fresh ref allowed; persistence failure prevents prompt (207.165292ms)
+✔ Pi B05: cancellation hang is settled or conservatively interrupted (58.144709ms)
+✔ Pi B05: cancellation ignore-abort is settled or conservatively interrupted (205.777958ms)
+✔ Pi marker belonging to another process is never removed (1.528375ms)
+{"event":"task.finished","taskId":"41239379-519e-46d6-ada0-cef43f85263e","state":"succeeded"}
+{"event":"task.finished","taskId":"3f6850dc-9082-4413-a3d8-939fcb5d97d4","state":"succeeded"}
+{"event":"task.finished","taskId":"337ab28c-b745-491f-bfc3-1827fcf7dd1a","state":"succeeded"}
+(node:20431) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ N02/Q01: concurrent duplicate submissions execute once and survive store replay (13.904584ms)
+✔ Q05/B03: duplicate /new increments generation once and never invokes Agent (8.238167ms)
+✔ N08: unknown command fails explicitly without running Agent (6.147875ms)
+{"event":"task.finished","taskId":"4ace0309-ca65-4ddb-9218-640fcbb47f90","state":"succeeded"}
+{"event":"task.finished","taskId":"a28e136c-953a-48d3-87b5-b2e8422b2a58","state":"succeeded"}
+✔ Q08/Q04: control commands do not wait for Agent; rejected tasks start no media work (24.206709ms)
+{"event":"task.finished","taskId":"11317ebd-6043-4af3-919e-d3b170b177b7","state":"succeeded"}
+{"event":"task.finished","taskId":"c6e922e7-d388-42c7-939f-23b6cc55710f","state":"succeeded"}
+✔ M10: later image is persisted while previous Agent turn is still running (31.5635ms)
+{"event":"task.finished","taskId":"dde42ca8-03e3-4d05-b10e-5e2cf4527d51","state":"succeeded"}
+{"event":"task.finished","taskId":"a07c5768-1e12-4571-940a-b31b4ce1ccb5","state":"succeeded"}
+{"event":"task.finished","taskId":"5cd86af3-c0ff-4dae-b934-c0562047660d","state":"succeeded"}
+{"event":"task.finished","taskId":"5ec2a29b-7cf4-4cf7-ab55-ea06451b4b9f","state":"succeeded"}
+✔ Q03: preparing image cannot be overtaken by a later text (39.009959ms)
+✔ Q06: commands cannot cancel or retrieve another conversation task (7.515583ms)
+✔ D07/R05: explicit result retrieval is delivery only, never Agent execution (7.120291ms)
+{"event":"task.finished","taskId":"a45a981f-eae2-4e8d-99c1-b737c4dd8432","state":"succeeded"}
+{"event":"task.finished","taskId":"2296b97b-4931-4b83-96ad-890ef69b67dd","state":"succeeded"}
+✔ E2E Codex: complete local transport/store/backend/reply and restart resume (92.778917ms)
+{"event":"task.finished","taskId":"03f375b8-3974-4f5a-a3d9-3a28e900bfb5","state":"interrupted"}
+✔ E2E Codex: cancelled task blocks new execution and /new cannot bypass review (65.074791ms)
+(node:20432) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ CLI01: run, resume, duplicate id, status and result work without network credentials (416.084042ms)
+✔ CLI02: local image-only input reaches selected Codex executable (114.712834ms)
+✔ CLI03: serve consumes JSONL and routes results to correct local sessions (150.778ms)
+✔ CLI04: malformed/truncated JSONL, duplicate flags, and missing configuration fail (187.61675ms)
+✔ CLI05: SIGINT stops actual writes, exits 130, persists interrupted, requires manual review (456.5215ms)
+✔ CLI06: Pi selection uses RPC, without any Codex executable (128.1305ms)
+(node:20433) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ R01: SIGKILL preparing fails safely and removes orphan partial files (53.175042ms)
+{"event":"task.finished","taskId":"9966b40e-69ba-4a48-b198-2f39c799bf9a","state":"succeeded"}
+✔ R02: SIGKILL queued executes once after restart; replay remains deduplicated (47.628792ms)
+✔ R03: SIGKILL after side effects blocks workspace; no automatic rerun or reset (42.865209ms)
+✔ R04: SIGKILL inside transaction rolls back result and terminal status (42.965209ms)
+✔ R05: SIGKILL after result commit recovers delivery only, never execution (42.996958ms)
+✔ R06: SIGKILL while sending becomes unknown; /result does not run Agent (42.724209ms)
+(node:20434) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ N01/N04: local identity is operator-bound; request IDs must be supplied (3.836209ms)
+✔ N03/N06: remote identities and quote/mixed fields cannot be injected (1.387583ms)
+✔ N05/N07: local conversations are isolated; images preserve order (2.484834ms)
+✔ M04: URL images and command attachments are rejected, with no downloader (2.429417ms)
+✔ P01/P02: bytewise UTF-8, CRLF and embedded U+2028/U+2029 preserve frames (0.422542ms)
+✔ P08: invalid UTF-8/JSON, oversized and truncated frames fail closed (0.244667ms)
+✔ P11: inherited process credentials and injection environments are excluded (1.86175ms)
+✔ config: removed transport keys and unsafe Codex options cannot silently activate (1.388708ms)
+✔ config: paths, overlap, ranges, backend and concurrency are validated (2.31625ms)
+✔ D01/D07: UTF-8 budget, pagination and explicit truncation (1.631333ms)
+✔ Codex argv: explicit resume ID, images after resume, restrictive flags, stdin prompt (2.579875ms)
+(node:20435) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ M01/B01: copied image bytes, dimensions, format and digest match (13.95725ms)
+✔ M03: byte and aggregate budgets reject input and remove partial directories (8.753ms)
+✔ M05: renamed HTML/SVG/executable are not accepted as images (10.674125ms)
+✔ M06: per-image and aggregate pixel limits are enforced (7.711791ms)
+✔ M06: truncated payload must pass full decode, not merely metadata (8.645708ms)
+✔ M07/M08: missing files, symlinks, escaped references and tampering fail (8.846ms)
+✔ M09/R01: active media survives TTL; inactive stale/partial files are removed (3.729541ms)
+✔ media: cancellation and count limit are checked before file I/O (1.7995ms)
+✔ M06: valid animated WebP is rejected before Agent input (4.418875ms)
+(node:20436) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ schema: old channel database is refused without changing its version (13.78125ms)
+✔ state: workspace identity and backend home cannot silently change (5.307375ms)
+✔ Q01: duplicate IDs are durable; ID reuse with different content/session is rejected (5.917542ms)
+✔ Q02/Q03: one active task; preparing blocks only later tasks in its own conversation (8.102625ms)
+✔ Q06: result/cancel ownership never crosses local conversation boundaries (9.043ms)
+✔ Q07: cancellation/success race has one terminal status and one outbox set (5.617959ms)
+✔ R04: outbox insertion failure rolls back result and terminal status (4.941459ms)
+✔ D03/D05: disconnected delivery remains pending; later success sends exactly once (6.839708ms)
+✔ D04: ACK/output uncertainty is never automatically retried (5.873541ms)
+✔ D06: retryable failures are finite; permanent failures are never retried (17.006667ms)
+✔ D07: bounded auto-parts retain the complete bounded result for explicit retrieval (6.768208ms)
+ℹ tests 91
+ℹ suites 0
+ℹ pass 90
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1797.469917
+
+✖ failing tests:
+
+test at dist/tests/contract/codex.test.js:70:5
+✖ C06: truncated cannot be reported as successful (39.165208ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+  + actual - expected
+
+  + 'BACKEND_STATE_UNKNOWN'
+  - 'RPC_TRUNCATED_FRAME'
+
+      at TestContext.<anonymous> (file:///Users/ted/workspace/wecom-agent-bridge/dist/tests/contract/codex.test.js:73:16)
+      at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+      at async Test.run (node:internal/test_runner/test:1113:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 'BACKEND_STATE_UNKNOWN',
+    expected: 'RPC_TRUNCATED_FRAME',
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

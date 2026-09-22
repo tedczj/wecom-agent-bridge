@@ -1,3 +1,21 @@
+# Connected macOS verification follow-up
+
+- Imported bundle commit: `92b38c3aa40ce86cd099f5e49dd4cc5aa9e69532`, fast-forwarded from `5d882cbbd6906678ca8f0728b3a1b0a14734d361` on `dev`.
+- Bundle SHA-256: `58a041d9bed9d9c28398fd68d013599d1efa3b1d31e6690299ae53d416fba19e`; `git bundle verify` succeeded. All 31 entries in the original source manifest matched before local changes.
+- Environment: macOS / Darwin arm64, Node v25.1.0, npm 11.6.2. This is separate from the original Linux evidence below and does not establish the CI Node 22.16 result.
+- Fresh `npm ci --no-audit --no-fund`: exit 0, 14 packages installed from the committed lockfile. `npm ls --depth=0` confirmed sharp 0.34.1, TypeScript 5.8.3 and @types/node 22.15.33. See `evidence/macos-clean-install.txt`.
+- Initial `npm run check`: exit 1, 90/91 passed. C06 truncated output returned `BACKEND_STATE_UNKNOWN` instead of `RPC_TRUNCATED_FRAME`. A targeted rerun reproduced the failure; temporary generated-code diagnostics identified `kill EPERM` during process-group termination. See `evidence/macos-check-initial.txt`.
+- Fix: on a denied termination signal, wait within the existing cleanup grace period and require the process group to disappear. If it remains alive or cannot be confirmed absent, retain the marker and return `BACKEND_STATE_UNKNOWN`. No uncertain work is replayed, and permission errors are not treated as proof of cleanup.
+- Added C19 regression cases for both group disappearance and persistent uncertainty after a synthetic signal permission denial. The latter must retain the process marker. The fake child exits naturally, and both cases confirm it has gone before test cleanup.
+- Final `npm run check`: exit 0; typecheck, build and **93 tests passed, 0 failed/cancelled/skipped**. Includes the six real SIGKILL recovery stages and CLI/contract tests using offline doubles. See `evidence/macos-check-final.txt`.
+- `npm run smoke:codex` without `--live`: expected exit 1 with `LIVE_OPT_IN_REQUIRED`; no model call. See `evidence/macos-smoke-opt-in.txt`.
+- Final tested source snapshot: `source-manifest-macos.sha256`. The original `source-manifest.sha256` remains the immutable manifest of the delivered bundle and does not describe the local fix.
+- No authenticated live Codex/Pi model calls, semantic vision checks, actual CLI sandbox enforcement or detached-daemon cleanup were tested in this follow-up. Offline test doubles do not establish those capabilities.
+
+The following report is historical evidence from the bundle-producing environment; its installation, macOS and network limitations apply to that run.
+
+---
+
 # Verification report — local Codex/Pi bridge
 
 ## Scope and exact baseline

@@ -116,3 +116,20 @@ test('C18: overlapping run calls are rejected rather than corrupting ownership',
   const h=setup(t,'codex','hang'),b=new CodexBackend(h.c),abort=new AbortController();const first=b.run(input(),undefined,hooks().value,abort.signal);
   await assert.rejects(b.run(input(),undefined,hooks().value,new AbortController().signal),/BACKEND_BUSY/);abort.abort();await first;
 });
+for (const disappears of [true,false]) test(`C19: denied cleanup signal requires confirmed group disappearance (${disappears})`,async t=>{
+  const h=setup(t,'codex','truncated-late-exit');h.c.agent.killGraceMs=disappears?500:20;
+  const kill=process.kill.bind(process);let deniedPid:number|undefined;
+  t.mock.method(process,'kill',(pid:number,signal?:string|number)=>{
+    if(pid<0&&signal==='SIGTERM'){
+      deniedPid=-pid;
+      throw Object.assign(new Error('synthetic permission denial'),{code:'EPERM'});
+    }
+    return kill(pid,signal);
+  });
+  const r=await new CodexBackend(h.c).run(input(),undefined,hooks().value,new AbortController().signal);
+  assert(deniedPid);assert.equal(r.outcome,'interrupted');
+  assert.equal(r.errorCode,disappears?'RPC_TRUNCATED_FRAME':'BACKEND_STATE_UNKNOWN');
+  assert.equal(existsSync(path.join(h.c.stateRoot,'agent-process.json')),!disappears);
+  // The fake exits naturally even when cleanup was denied; leave no live child.
+  await eventually(()=>{try{kill(-deniedPid!,0);return false;}catch(e){return (e as NodeJS.ErrnoException).code==='ESRCH';}});
+});

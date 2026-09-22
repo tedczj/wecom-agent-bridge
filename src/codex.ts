@@ -32,14 +32,23 @@ function groupAlive(pid: number | undefined): boolean {
 }
 async function terminateGroup(child: ChildProcessWithoutNullStreams, graceMs: number): Promise<void> {
   const pid = child.pid;
-  const signal = (s: NodeJS.Signals) => {
+  const signal = async (s: NodeJS.Signals) => {
     if (!pid) return;
     try { process.kill(-pid, s); }
-    catch (e) { if ((e as NodeJS.ErrnoException).code !== 'ESRCH') throw new BackendStateUnknown(); }
+    catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'ESRCH') return;
+      // A process group can become unsignalable while its exiting child is
+      // being reaped. Accept cleanup only after the group actually disappears.
+      if ((e as NodeJS.ErrnoException).code === 'EPERM') {
+        await wait();
+        if (!groupAlive(pid)) return;
+      }
+      throw new BackendStateUnknown();
+    }
   };
   const wait = async () => { const until = Date.now() + graceMs; while (groupAlive(pid) && Date.now() < until) await sleep(10); };
-  if (groupAlive(pid)) { signal('SIGTERM'); await wait(); }
-  if (groupAlive(pid)) { signal('SIGKILL'); await wait(); }
+  if (groupAlive(pid)) { await signal('SIGTERM'); await wait(); }
+  if (groupAlive(pid)) { await signal('SIGKILL'); await wait(); }
   if (groupAlive(pid)) throw new BackendStateUnknown();
 }
 /** Uses the installed official Codex CLI; no SDK shim, mock backend or model is shipped as production code. */

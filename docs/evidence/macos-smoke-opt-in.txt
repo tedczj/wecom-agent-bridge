@@ -1,0 +1,7 @@
+
+> local-agent-bridge@0.2.0 smoke:codex
+> npm run build --silent && node dist/scripts/smoke-agent.js codex
+
+{"event":"smoke.failed","code":"LIVE_OPT_IN_REQUIRED"}
+(node:21088) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

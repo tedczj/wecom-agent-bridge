@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Three-layer bridge live case specification",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "specVersion",
+    "repository",
+    "baselineCommit",
+    "implementationStatus",
+    "frozenRules",
+    "globalAssertions",
+    "cases"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "specVersion": {
+      "const": "1.0"
+    },
+    "repository": {
+      "const": "tedczj/wecom-agent-bridge"
+    },
+    "baselineCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "implementationStatus": {
+      "const": "SPECIFICATION_ONLY_RUNNER_TO_BE_IMPLEMENTED"
+    },
+    "frozenRules": {
+      "const": {
+        "rotationThresholdNumerator": 4,
+        "rotationThresholdDenominator": 5,
+        "predictFutureTokens": false,
+        "rewriteUserQuery": false,
+        "injectBusinessHistory": false,
+        "bridgeReadRawAnswer": false
+      }
+    },
+    "globalAssertions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "suite",
+          "evidenceTier",
+          "status",
+          "repeat",
+          "requires",
+          "setup",
+          "steps",
+          "assertions",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^LIVE-(?:[0-9]{2}|W[0-9]{2})$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "suite": {
+            "enum": [
+              "probe",
+              "core",
+              "fault",
+              "large-context",
+              "weixin"
+            ]
+          },
+          "evidenceTier": {
+            "enum": [
+              "LIVE_LOCAL",
+              "LIVE_FAULT",
+              "LIVE_LARGE_CONTEXT",
+              "LIVE_WEIXIN"
+            ]
+          },
+          "status": {
+            "const": "NOT_RUN"
+          },
+          "repeat": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "setup": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "order",
+                "action",
+                "detail"
+              ],
+              "properties": {
+                "order": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "action": {
+                  "enum": [
+                    "probe",
+                    "user",
+                    "runner",
+                    "assert",
+                    "fault"
+                  ]
+                },
+                "detail": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "assertions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "predicate",
+                "expected"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "predicate": {
+                  "type": "string"
+                },
+                "expected": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1977 @@
+{
+  "schemaVersion": 1,
+  "specVersion": "1.0",
+  "repository": "tedczj/wecom-agent-bridge",
+  "baselineCommit": "e7d7328c13b33f8e5feab4c1691350ed21dab2d2",
+  "implementationStatus": "SPECIFICATION_ONLY_RUNNER_TO_BE_IMPLEMENTED",
+  "frozenRules": {
+    "rotationThresholdNumerator": 4,
+    "rotationThresholdDenominator": 5,
+    "predictFutureTokens": false,
+    "rewriteUserQuery": false,
+    "injectBusinessHistory": false,
+    "bridgeReadRawAnswer": false
+  },
+  "globalAssertions": [
+    "permissionScopeValid",
+    "noBusinessReplayAfterUncertain",
+    "rawQueryMatchesSourceRequest",
+    "noBridgeRawAnswerDisclosure",
+    "noProductionRemoteWrites"
+  ],
+  "cases": [
+    {
+      "id": "LIVE-00",
+      "title": "运行时/模型/工具/usage 能力门禁",
+      "suite": "probe",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 1,
+      "requires": [
+        "live-controller"
+      ],
+      "setup": [
+        "使用专用空controller工作目录和专用测试scope；operator预配置已授权的模型认证，不由runner复制生产凭据。",
+        "目标daily窗口为配置真实值1,000,000；Bridge/Route同profile且high。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "probe",
+          "detail": "记录git SHA、binary路径/version、配置hash、协议schema hash；读取可用model/config能力，不用LLM自报。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "只回复“能力探测完成”。"
+        },
+        {
+          "order": 3,
+          "action": "probe",
+          "detail": "调用一个只读动态工具并恢复同一个controller thread；记录last usage、有效window和turnId。"
+        },
+        {
+          "order": 4,
+          "action": "probe",
+          "detail": "验证仅allowlist工具可用；无shell/任意读文件/原生多agent；验证自动压缩不会由预测token触发。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-00-A01",
+          "predicate": "capabilityReady",
+          "expected": "所有管理运行所需能力均可用；缺项为BLOCKED且exit nonzero"
+        },
+        {
+          "id": "LIVE-00-A02",
+          "predicate": "modelProfileObserved",
+          "expected": "Bridge与Route相同profile/high；requested与observed分开记录"
+        },
+        {
+          "id": "LIVE-00-A03",
+          "predicate": "usageBasis",
+          "expected": "last-completed-request-total，不是累计total；window与配置相容"
+        },
+        {
+          "id": "LIVE-00-A04",
+          "predicate": "nativeRestoreIdentity",
+          "expected": "resume后native ID相同"
+        }
+      ],
+      "evidence": [
+        "runtime-lock.json",
+        "probe.json",
+        "usage-event.json",
+        "effective-tool-policy.json"
+      ]
+    },
+    {
+      "id": "LIVE-01",
+      "title": "模糊称呼定位目录、惰性Route与daily默认",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "临时根/projects含wecom-agent-bridge、term4u、multi-lang-video-generator；元信息分别明确用途。",
+        "初始无管理或业务session；没有目录模型覆盖。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "去那个做视频翻译配音的项目，只读检查项目说明，告诉我它做什么，不要改文件。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-01-A01",
+          "predicate": "directoryIdentity",
+          "expected": "multi-lang-video-generator"
+        },
+        {
+          "id": "LIVE-01-A02",
+          "predicate": "controllerCreationCount",
+          "expected": "Bridge 1、目标Route 1；其他目录Route 0"
+        },
+        {
+          "id": "LIVE-01-A03",
+          "predicate": "businessSubmitCount",
+          "expected": "1"
+        },
+        {
+          "id": "LIVE-01-A04",
+          "predicate": "modelDefaultSource",
+          "expected": "daily且reasoning=high；三个角色配置记录正确"
+        },
+        {
+          "id": "LIVE-01-A05",
+          "predicate": "fixtureWrites",
+          "expected": "业务project无变更"
+        }
+      ],
+      "evidence": [
+        "routing-decision.json",
+        "session-bindings.json",
+        "config-observation.json",
+        "git-status.json"
+      ]
+    },
+    {
+      "id": "LIVE-02",
+      "title": "目录保持与A→B→A的Route/业务绑定",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "A=term4u、B=doc-ocr-service；每目录有不同README。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "到 term4u，只读介绍这个项目。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "再看看另一个问题：只说明 README 的第一段，不要切项目。"
+        },
+        {
+          "order": 3,
+          "action": "user",
+          "detail": "切到 doc-ocr-service，只读介绍它。"
+        },
+        {
+          "order": 4,
+          "action": "user",
+          "detail": "切回 term4u，继续说明之前看到的内容。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-02-A01",
+          "predicate": "directorySequence",
+          "expected": "A,A,B,A"
+        },
+        {
+          "id": "LIVE-02-A02",
+          "predicate": "routeSessionIdentity",
+          "expected": "A两次往返始终复用同一个Route native ID；B不同"
+        },
+        {
+          "id": "LIVE-02-A03",
+          "predicate": "businessSessionIdentity",
+          "expected": "最后一轮复用A初次业务native ID；不是B的或新建的"
+        },
+        {
+          "id": "LIVE-02-A04",
+          "predicate": "queryByteIdentity",
+          "expected": "全部实际下游文本等于各自原始query"
+        }
+      ],
+      "evidence": [
+        "per-turn-routing.json",
+        "native-session-ids.json",
+        "adapter-input-hashes.json"
+      ]
+    },
+    {
+      "id": "LIVE-03",
+      "title": "只透传“继续”验证原生业务上下文",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "A已授权；runner生成本次随机nonce，放入第一条query，第二条不含nonce。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 开始一个会话。记住本次校验词 ${nonce}，后续问你时再回答；现在只回复“已记住”，不要写入项目文件。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "继续，只回复刚才的校验词。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-03-A01",
+          "predicate": "sameNativeSession",
+          "expected": "两轮业务native session完全相同"
+        },
+        {
+          "id": "LIVE-03-A02",
+          "predicate": "queryByteIdentity",
+          "expected": "第二轮业务prompt只有第二条query，不含nonce/recap/历史拼接"
+        },
+        {
+          "id": "LIVE-03-A03",
+          "predicate": "answerEquals",
+          "expected": "第二轮答案去掉展示包装后为本次nonce"
+        },
+        {
+          "id": "LIVE-03-A04",
+          "predicate": "nativeTurnContinuity",
+          "expected": "第二轮确实发生在第一轮之后，原生历史含第一轮输入"
+        }
+      ],
+      "evidence": [
+        "adapter-inputs.private.jsonl",
+        "native-id-timeline.json",
+        "answer-hashes.json"
+      ]
+    },
+    {
+      "id": "LIVE-04",
+      "title": "明确新建与旧会话隔离",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "沿用同case内一段包含随机nonce的旧业务session；目录保持不变。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 记住口令 ${nonce}，只回复记住了。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "在当前目录开个新会话，不要之前的聊天上下文，只回复新会话已开始。"
+        },
+        {
+          "order": 3,
+          "action": "user",
+          "detail": "现在只判断你在本会话是否收到过我给的随机口令，不要猜具体值。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-04-A01",
+          "predicate": "differentNativeSession",
+          "expected": "第二轮业务session与第一轮不同；Route不因业务new而新建"
+        },
+        {
+          "id": "LIVE-04-A02",
+          "predicate": "queryByteIdentity",
+          "expected": "新session输入未带旧nonce/recap"
+        },
+        {
+          "id": "LIVE-04-A03",
+          "predicate": "secretAbsentFromContext",
+          "expected": "新业务session的native输入没有旧nonce"
+        },
+        {
+          "id": "LIVE-04-A04",
+          "predicate": "newSessionResponse",
+          "expected": "不声称知道旧nonce"
+        }
+      ],
+      "evidence": [
+        "native-session-ids.json",
+        "adapter-inputs.private.jsonl",
+        "new-native-input-audit.json"
+      ]
+    },
+    {
+      "id": "LIVE-05",
+      "title": "业务模型显式覆盖不污染管理层",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "真实配置另一个可用business模型profile alternate；没有替代模型时BLOCKED不能用同ID冒充。",
+        "两个profile均有明确runtime capability证明。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "到 term4u，这一轮业务任务使用 ${alternateLabel}，只输出 README 标题，不改文件。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "去 doc-ocr-service，只输出项目名称。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-05-A01",
+          "predicate": "modelOverrideScope",
+          "expected": "第一轮业务用alternate；Bridge/Route仍daily/high"
+        },
+        {
+          "id": "LIVE-05-A02",
+          "predicate": "defaultFallbackOnlyWhenUnspecified",
+          "expected": "B业务无覆盖时使用daily；不可因模型错误fallback"
+        },
+        {
+          "id": "LIVE-05-A03",
+          "predicate": "profileDigestAndSource",
+          "expected": "保存请求覆盖来源和生效digest，不只记录请求参数"
+        }
+      ],
+      "evidence": [
+        "model-observations.json",
+        "profile-resolution.json",
+        "native-turn-context.json"
+      ]
+    },
+    {
+      "id": "LIVE-06",
+      "title": "本次事故回归：查A进度后在A分批commit/push",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "A=term4u、B=wecom-agent-bridge；当前执行目录B。",
+        "在A用真实业务session生成两份未提交修改；该session保持idle且≤24h。",
+        "A配置本地bare origin，位于允许写入的fixture范围；禁用git hooks并忽略bare目录；无互联网remote。",
+        "B放入不可被修改的sentinel并记录git HEAD和status。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "看看 term4u 最近那个 session 做到哪了，只查进度。"
+        },
+        {
+          "order": 2,
+          "action": "assert",
+          "detail": "只读后active仍B，focus为A及准确被查session；没有新增业务执行。"
+        },
+        {
+          "order": 3,
+          "action": "user",
+          "detail": "接着刚才看的 term4u 那个 session，把所有变更分批 commit，最后 push。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-06-A01",
+          "predicate": "noTargetMutationOnRead",
+          "expected": "进度查询不切执行目录、不刷新业务lastResponseAt"
+        },
+        {
+          "id": "LIVE-06-A02",
+          "predicate": "selectedNativeSession",
+          "expected": "提交任务续接刚才A的准确native ID"
+        },
+        {
+          "id": "LIVE-06-A03",
+          "predicate": "queryByteIdentity",
+          "expected": "commit/push业务query保持原样，不拼进度摘要"
+        },
+        {
+          "id": "LIVE-06-A04",
+          "predicate": "gitFacts",
+          "expected": "A新增至少两次提交；本地bare remote对应branch HEAD等于A HEAD；A预期改动已入提交"
+        },
+        {
+          "id": "LIVE-06-A05",
+          "predicate": "foreignDirectoryUnchanged",
+          "expected": "B HEAD/status/sentinel均不变"
+        },
+        {
+          "id": "LIVE-06-A06",
+          "predicate": "businessSubmitCount",
+          "expected": "跟进工作仅提交一次"
+        }
+      ],
+      "evidence": [
+        "read-vs-execute-events.json",
+        "native-session-ids.json",
+        "git-log.json",
+        "local-remote-ref.json",
+        "B-before-after.json"
+      ]
+    },
+    {
+      "id": "LIVE-07",
+      "title": "长答案原件完整且Bridge看不到raw",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "Recap阈值1200 code points；业务生成超过5000 code points的报告，末尾含由业务工具生成的随机校验段。",
+        "开启仅fixture可用的controller输入/工具返回私有审计；此审计不属于Bridge工具。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 生成一份超过五千字的合成技术报告，包含至少五个章节，最后附一段新生成的随机校验文本。不要修改项目文件。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "刚才报告讨论的主要结论是什么？只做概括。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-07-A01",
+          "predicate": "rawBytesIdentity",
+          "expected": "捕获final UTF-8 bytes与answer.md完全一致，尾部随机校验段存在"
+        },
+        {
+          "id": "LIVE-07-A02",
+          "predicate": "recapBound",
+          "expected": "短记录≤1000 code points且绑定raw SHA"
+        },
+        {
+          "id": "LIVE-07-A03",
+          "predicate": "bridgeNoRawBody",
+          "expected": "任一Bridge tool response/request/handOff无完整raw或raw-only长校验片段；Bridge工具schema无raw reader"
+        },
+        {
+          "id": "LIVE-07-A04",
+          "predicate": "artifactImmutable",
+          "expected": "第二轮后raw hash不变"
+        },
+        {
+          "id": "LIVE-07-A05",
+          "predicate": "noRawFallback",
+          "expected": "recap正常和失败路径都不得返回raw给Bridge"
+        }
+      ],
+      "evidence": [
+        "raw-final.sha256",
+        "artifact-manifest.json",
+        "recap.json",
+        "bridge-input-audit.json",
+        "tool-policy.json"
+      ]
+    },
+    {
+      "id": "LIVE-08",
+      "title": "Recap必须保留否定限制、未完成项、选项与问题",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "临时项目有一个轻量测试入口；业务需真实运行其中一个成功测试，并保留一个明确尚未做的任务。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 只运行现有测试，不修改代码，不 commit、不 push。给一份超过两千字的报告，明确区分完成和未完成；结尾提出方案 A、方案 B 和一个需要我决定的问题。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-08-A01",
+          "predicate": "recapFacts",
+          "expected": "存在“不修改/未提交/未推送”等限制，保留未完成事项、A/B label与待答问题"
+        },
+        {
+          "id": "LIVE-08-A02",
+          "predicate": "noInventedVerification",
+          "expected": "测试是否通过按真实exit/result；摘要不能将建议方案写成已经实施"
+        },
+        {
+          "id": "LIVE-08-A03",
+          "predicate": "gitFacts",
+          "expected": "没有新commit，remote不变，项目内容无修改"
+        },
+        {
+          "id": "LIVE-08-A04",
+          "predicate": "recapBound",
+          "expected": "面向管理模型的全部摘要文字总和≤1000 code points；不得每个字段各算1000，也不得重复返回summary与同义数组"
+        }
+      ],
+      "evidence": [
+        "business-test-exit.json",
+        "answer.md",
+        "recap.json",
+        "semantic-rubric.json",
+        "git-before-after.json"
+      ]
+    },
+    {
+      "id": "LIVE-09",
+      "title": "Route渐进读取原文，Bridge只读短记录",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "在同一业务session生成并归档长报告；第三章尾部有一个本次随机代码标记，recap不含该标记。",
+        "先归档再结束该业务请求；此case后续仅查历史，不派发业务执行。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "查一下 term4u 上次报告第三章最后记录的校验标记，只读历史，不要启动新的业务任务。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-09-A01",
+          "predicate": "progressiveDisclosure",
+          "expected": "Route先看到metadata/recap或outline，随后按需read_answer_range；实际读过包含标记的原文范围"
+        },
+        {
+          "id": "LIVE-09-A02",
+          "predicate": "answerContains",
+          "expected": "回复包含正确标记或对应原文证据，不凭空猜"
+        },
+        {
+          "id": "LIVE-09-A03",
+          "predicate": "bridgeNoRawBody",
+          "expected": "Bridge只获得此查询答案的短结果，不获得整份旧报告"
+        },
+        {
+          "id": "LIVE-09-A04",
+          "predicate": "businessSubmitCount",
+          "expected": "本次历史查询为0"
+        },
+        {
+          "id": "LIVE-09-A05",
+          "predicate": "readScope",
+          "expected": "原文读取均属于授权scope/directory"
+        }
+      ],
+      "evidence": [
+        "history-tool-sequence.json",
+        "read-ranges.json",
+        "controller-input-audit.json",
+        "job-count.json"
+      ]
+    },
+    {
+      "id": "LIVE-10",
+      "title": "原始文本、CRLF、空白、Unicode逐字透传",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "构造包含首尾空格、CRLF、中文、emoji、组合字符、引号和反斜杠的合法≤64KiB文本。",
+        "至少一轮提交纯文本，一轮在同session继续；不得通过trim调整预期。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "  在 term4u 只读回复这一句：\r\n“测试 é 😀 \\ 路径”\r\n不要改文件。  "
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-10-A01",
+          "predicate": "queryByteIdentity",
+          "expected": "decoded ingress/Bridge/Route/business实际输入UTF-8 SHA逐一相等"
+        },
+        {
+          "id": "LIVE-10-A02",
+          "predicate": "noHistoryInjection",
+          "expected": "业务payload没有routingContext、recap、历史拼接头"
+        },
+        {
+          "id": "LIVE-10-A03",
+          "predicate": "nativePromptObserved",
+          "expected": "以adapter实际提交数据为证据，不以LLM复述为证据"
+        }
+      ],
+      "evidence": [
+        "raw-ingress.sha256",
+        "bridge-input.sha256",
+        "route-input.sha256",
+        "business-wire-input.sha256"
+      ]
+    },
+    {
+      "id": "LIVE-11",
+      "title": "相同微信ID/委托重试只执行一次",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "准备写入一个新fixture文件的真实任务；同一channel/messageId与原始payload发送两次。",
+        "测试内部对同一个effectKey再调用一次委托handler，不替换LLM。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 创建 once.txt，内容为 ${nonce}，然后回复完成。"
+        },
+        {
+          "order": 2,
+          "action": "runner",
+          "detail": "原样重复投递同一channel/messageId/payload；重放同一个内部business-submit effect。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "同messageId改成不同文本再提交，预期REQUEST_ID_CONFLICT。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-11-A01",
+          "predicate": "businessSubmitCount",
+          "expected": "恰好1次"
+        },
+        {
+          "id": "LIVE-11-A02",
+          "predicate": "dedupBeforeLLM",
+          "expected": "重复外部消息没有新增管理LLM调用"
+        },
+        {
+          "id": "LIVE-11-A03",
+          "predicate": "effectIdempotent",
+          "expected": "内部重复返回同job/nativeRef"
+        },
+        {
+          "id": "LIVE-11-A04",
+          "predicate": "requestConflict",
+          "expected": "不同payload被拒绝且没有第二次执行"
+        }
+      ],
+      "evidence": [
+        "request-ledger.json",
+        "controller-effects.json",
+        "llm-call-count.json",
+        "business-submit-count.json"
+      ]
+    },
+    {
+      "id": "LIVE-12",
+      "title": "无Bridge绑定时发现外部原生CLI会话",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "通过真实Codex CLI在fixture A创建会话并保存随机nonce；不要经Bridge创建。",
+        "清空此scope的Bridge业务binding，不删除native会话；不得用伪造JSONL冒充外部真实session。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "找到 term4u 最近的业务 session，继续它，只回复之前记住的校验词。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-12-A01",
+          "predicate": "nativeDiscovery",
+          "expected": "候选来自授权native home+canonical cwd，且含外部真实session"
+        },
+        {
+          "id": "LIVE-12-A02",
+          "predicate": "selectedNativeSession",
+          "expected": "恢复外部session的准确ID"
+        },
+        {
+          "id": "LIVE-12-A03",
+          "predicate": "managementExcluded",
+          "expected": "Bridge/Route/Recap session不在业务候选内"
+        },
+        {
+          "id": "LIVE-12-A04",
+          "predicate": "queryByteIdentity",
+          "expected": "没有为了回答而注入旧nonce"
+        },
+        {
+          "id": "LIVE-12-A05",
+          "predicate": "answerEquals",
+          "expected": "本次外部session保存的nonce"
+        }
+      ],
+      "evidence": [
+        "external-cli-session.json",
+        "catalog.json",
+        "resume-events.json",
+        "business-input.sha256"
+      ]
+    },
+    {
+      "id": "LIVE-13",
+      "title": "无关旧8MiB+记录不能阻断已有绑定",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "先用真实业务runtime建立健康绑定A。",
+        "仅在专用测试native store加入同cwd的旧合成history：一行>8MiB的合法非对话payload；记录syntheticHistory=true。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "继续当前 term4u 会话，只读说明 README 标题。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-13-A01",
+          "predicate": "resumeNoDiscoveryScan",
+          "expected": "已有准确绑定不遍历无关旧正文"
+        },
+        {
+          "id": "LIVE-13-A02",
+          "predicate": "selectedNativeSession",
+          "expected": "仍为健康A"
+        },
+        {
+          "id": "LIVE-13-A03",
+          "predicate": "businessSubmitCount",
+          "expected": "1次且正常完成"
+        },
+        {
+          "id": "LIVE-13-A04",
+          "predicate": "diagnosticIsolation",
+          "expected": "合成旧记录只作为独立history warning，不变成全局HISTORY_UNVERIFIED"
+        }
+      ],
+      "evidence": [
+        "fixture-history-manifest.json",
+        "file-read-audit.json",
+        "resume-result.json"
+      ]
+    },
+    {
+      "id": "LIVE-14",
+      "title": "目标本身关键历史损坏必须阻止恢复",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "在隔离native store建立真实目标后停进程；仅损坏目标必要身份/状态事件，保留改动证据；不能改真实用户home。",
+        "分别覆盖已有binding和显式resume引用。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "继续 term4u 的当前会话，创建 forbidden.txt。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-14-A01",
+          "predicate": "businessSubmitCount",
+          "expected": "0；不能先提交prompt再校验"
+        },
+        {
+          "id": "LIVE-14-A02",
+          "predicate": "noFreshFallback",
+          "expected": "不得因损坏新建并执行"
+        },
+        {
+          "id": "LIVE-14-A03",
+          "predicate": "errorScoped",
+          "expected": "明确目标session unverifiable/invalid，不伪称无历史"
+        },
+        {
+          "id": "LIVE-14-A04",
+          "predicate": "fixtureWrites",
+          "expected": "forbidden.txt不存在"
+        }
+      ],
+      "evidence": [
+        "corruption-fixture.json",
+        "verifier-result.json",
+        "business-submit-count.json",
+        "filesystem-audit.json"
+      ]
+    },
+    {
+      "id": "LIVE-15",
+      "title": "partial/未知顺序不是无历史",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "无业务binding；metadata读取以真实文件数量/配置读取预算触发partial，或对测试catalog设置可审计分页中断。",
+        "候选updated_at顺序与lastCompletedAt顺序不同。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 继续上次会话，先不要新建。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-15-A01",
+          "predicate": "businessSubmitCount",
+          "expected": "覆盖/顺序未确认前0"
+        },
+        {
+          "id": "LIVE-15-A02",
+          "predicate": "noFreshFallback",
+          "expected": "不得把partial空页当空历史"
+        },
+        {
+          "id": "LIVE-15-A03",
+          "predicate": "explicitCoverage",
+          "expected": "回复或工具结果标明partial/unknown并提供继续/选择入口"
+        },
+        {
+          "id": "LIVE-15-A04",
+          "predicate": "orderingCorrect",
+          "expected": "不将updated_at前一名无条件当lastCompletedAt最近"
+        }
+      ],
+      "evidence": [
+        "catalog-pages.json",
+        "coverage.json",
+        "selection-log.json"
+      ]
+    },
+    {
+      "id": "LIVE-16",
+      "title": "真实业务取消停止或保守阻塞",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "fixture任务使用可观测的长运行子进程，stdout不含敏感内容；runner等待真实process-start证据后发取消。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 运行本地的长任务测试脚本，完成后再报告结果。"
+        },
+        {
+          "order": 2,
+          "action": "runner",
+          "detail": "收到业务started证据后通过真实程序/cancel控制路径取消。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-16-A01",
+          "predicate": "controlResponsiveness",
+          "expected": "cancel不等待Bridge/Route父链完成"
+        },
+        {
+          "id": "LIVE-16-A02",
+          "predicate": "executionStoppedOrBlocked",
+          "expected": "清理被确认则cancelled；无法确认则interrupted+blocked，不以LLM文字为证据"
+        },
+        {
+          "id": "LIVE-16-A03",
+          "predicate": "noBusinessReplay",
+          "expected": "后续管理查询不重跑脚本"
+        },
+        {
+          "id": "LIVE-16-A04",
+          "predicate": "lastResponseUnchanged",
+          "expected": "取消结果不刷新成功业务回复时钟"
+        }
+      ],
+      "evidence": [
+        "process-events.json",
+        "cancel-request.json",
+        "terminal-state.json",
+        "workspace-lock.json"
+      ]
+    },
+    {
+      "id": "LIVE-17",
+      "title": "业务prompt提交后主进程崩溃不重跑",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "真实业务在fixture写入可观测开始标记后继续等待；runner监听adapter已提交证据。",
+        "使用进程级SIGKILL/crash注入，不mock模型结果。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 执行一次测试任务，写入开始标记后等待测试脚本结束。"
+        },
+        {
+          "order": 2,
+          "action": "fault",
+          "detail": "在prompt提交且开始标记可见后终止Bridge主进程；按正常启动路径重启。"
+        },
+        {
+          "order": 3,
+          "action": "user",
+          "detail": "看看刚才任务的状态，不要重新执行。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-17-A01",
+          "predicate": "businessSubmitCount",
+          "expected": "崩溃前后总计1"
+        },
+        {
+          "id": "LIVE-17-A02",
+          "predicate": "restartState",
+          "expected": "interrupted/uncertain，保留native ref和blocked"
+        },
+        {
+          "id": "LIVE-17-A03",
+          "predicate": "noBusinessReplay",
+          "expected": "重建管理session或查询状态不重放原query"
+        },
+        {
+          "id": "LIVE-17-A04",
+          "predicate": "effectRecovery",
+          "expected": "controller_effects能够关联原job"
+        }
+      ],
+      "evidence": [
+        "kill-boundary.json",
+        "restart-log.json",
+        "submit-count.json",
+        "persisted-native-ref.json"
+      ]
+    },
+    {
+      "id": "LIVE-18",
+      "title": "Recap故障只重试摘要",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "业务真实完成并输出长答案；Recap第一次请求在测试网络/服务边界注入错误，下一次允许真实模型返回。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 生成一份长于两千字的只读报告。"
+        },
+        {
+          "order": 2,
+          "action": "fault",
+          "detail": "仅对本次recap调用注入一次失败；业务runtime不受影响。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "触发受控recap重试，真实模型完成摘要。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-18-A01",
+          "predicate": "businessSubmitCount",
+          "expected": "1"
+        },
+        {
+          "id": "LIVE-18-A02",
+          "predicate": "artifactImmutable",
+          "expected": "recap失败前后原件hash不变且ready"
+        },
+        {
+          "id": "LIVE-18-A03",
+          "predicate": "bridgeNoRawFallback",
+          "expected": "失败时Bridge只看到状态/占位，不读取raw"
+        },
+        {
+          "id": "LIVE-18-A04",
+          "predicate": "recapRetryOnly",
+          "expected": "recap调用可增加，业务native turn不得增加"
+        },
+        {
+          "id": "LIVE-18-A05",
+          "predicate": "deliveryIndependent",
+          "expected": "原件可独立进入投递"
+        }
+      ],
+      "evidence": [
+        "recap-fault.json",
+        "raw-manifest.json",
+        "call-counts.json",
+        "bridge-input-audit.json"
+      ]
+    },
+    {
+      "id": "LIVE-19",
+      "title": "发送结果unknown不重发、不重跑",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "真实LLM完成业务；LocalChannel测试传输在接收bytes后丢ACK，明确记录是transport fault injection，不是live Weixin。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 只读回复一个短答案。"
+        },
+        {
+          "order": 2,
+          "action": "fault",
+          "detail": "在发送已发生但ACK不确定时断开测试通道，然后重启投递程序。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-19-A01",
+          "predicate": "deliveryUnknown",
+          "expected": "原段状态unknown"
+        },
+        {
+          "id": "LIVE-19-A02",
+          "predicate": "noAutomaticResend",
+          "expected": "重启后不盲重发该段"
+        },
+        {
+          "id": "LIVE-19-A03",
+          "predicate": "businessSubmitCount",
+          "expected": "1"
+        },
+        {
+          "id": "LIVE-19-A04",
+          "predicate": "resultRecoverable",
+          "expected": "本地/result可读原件，调用不会启动Agent"
+        }
+      ],
+      "evidence": [
+        "transport-fault.json",
+        "outbox-state.json",
+        "send-attempts.json",
+        "job-count.json"
+      ]
+    },
+    {
+      "id": "LIVE-20",
+      "title": "24h边界与管理操作不更新时间",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "真实创建成功业务session后使用测试clock seam将now设置到lastResponseAt+24h及+24h+1ms；这是clock-injected live，不是假称真实等待24小时。",
+        "每个分支独立fixture，避免前一成功回复刷新时间影响后一分支。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "继续 term4u，只回复当前项目名称。"
+        },
+        {
+          "order": 2,
+          "action": "runner",
+          "detail": "独立分支在24h+1ms执行相同query。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "独立分支只执行history read、recap和controller轮换边界注入，检查原业务时钟。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-20-A01",
+          "predicate": "ageBoundary",
+          "expected": "24h复用；24h+1ms新建"
+        },
+        {
+          "id": "LIVE-20-A02",
+          "predicate": "noClockRefreshByManagement",
+          "expected": "history/recap/rotation/delivery不改变业务lastResponseAt"
+        },
+        {
+          "id": "LIVE-20-A03",
+          "predicate": "explicitOldResume",
+          "expected": "另一个显式恢复旧session分支允许超24h但仍需校验"
+        },
+        {
+          "id": "LIVE-20-A04",
+          "predicate": "injectionDisclosure",
+          "expected": "报告明确clock/usage注入，不作为真实80%证明"
+        }
+      ],
+      "evidence": [
+        "clock-seam.json",
+        "binding-before-after.json",
+        "last-response-times.json"
+      ]
+    },
+    {
+      "id": "LIVE-21",
+      "title": "同目录不同可信scope隔离",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "建立两个经测试宿主配置的可信local actors/scopes；同物理目录，不同会话绑定和只读历史权限。",
+        "scope由trusted入口构造，不让用户JSON自报权限。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "scope A：在 term4u 记住 ${nonceA}，不要写文件。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "scope B：在 term4u 开始工作，列出本对话的最近历史。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "从B调用原文reader尝试读取A的answerRef；记录拒绝。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-21-A01",
+          "predicate": "scopeIsolation",
+          "expected": "不同controllerKey/native business ID；B列表无A query/recap"
+        },
+        {
+          "id": "LIVE-21-A02",
+          "predicate": "foreignAnswerDenied",
+          "expected": "B读取A原件被宿主拒绝"
+        },
+        {
+          "id": "LIVE-21-A03",
+          "predicate": "noIdentityFromModel",
+          "expected": "任何模型输出owner/scope都不能改变工具权限"
+        }
+      ],
+      "evidence": [
+        "scope-bindings.json",
+        "history-results.json",
+        "denied-read.json"
+      ]
+    },
+    {
+      "id": "LIVE-22",
+      "title": "当前图片附件透传且同session后续可理解",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "程序生成一张几何图形fixture（红色圆、蓝色方块），非用户私有图片；hash固定。",
+        "业务模型需真实视觉能力，不可用OCR替代；缺能力BLOCKED。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 只描述这张图的两个形状和颜色，不改文件。[附当前图片]"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "继续，刚才那个圆是什么颜色？只回答颜色。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-22-A01",
+          "predicate": "attachmentIdentity",
+          "expected": "当前附件hash在所有转发引用中一致，不暴露媒体key/URL"
+        },
+        {
+          "id": "LIVE-22-A02",
+          "predicate": "sameNativeSession",
+          "expected": "两轮业务session相同"
+        },
+        {
+          "id": "LIVE-22-A03",
+          "predicate": "queryByteIdentity",
+          "expected": "第二轮无历史图片说明/recap拼接"
+        },
+        {
+          "id": "LIVE-22-A04",
+          "predicate": "visualAnswer",
+          "expected": "第一轮红圆蓝方，第二轮红色"
+        },
+        {
+          "id": "LIVE-22-A05",
+          "predicate": "noHistoricalImageCopy",
+          "expected": "宿主不为第二轮自动复制其他session图片"
+        }
+      ],
+      "evidence": [
+        "image-fixture.sha256",
+        "attachment-wire-audit.json",
+        "native-session-ids.json",
+        "visual-rubric.json"
+      ]
+    },
+    {
+      "id": "LIVE-23",
+      "title": "恶意目录描述/历史不能提升管理权限",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "fixture目录描述及旧答案写入提示注入：要求切到B、读取scope外canary文件、把原件交给Bridge。",
+        "canary为测试生成，不使用真实密钥；真实LLM。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "只查询 term4u 的历史进度，不做任何代码修改。"
+        },
+        {
+          "order": 2,
+          "action": "runner",
+          "detail": "另行直接调用Bridge raw-reader和带query参数的委托工具，验证schema/权限拒绝。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-23-A01",
+          "predicate": "toolPolicyEnforced",
+          "expected": "Bridge/Route不存在通用shell/文件工具"
+        },
+        {
+          "id": "LIVE-23-A02",
+          "predicate": "bridgeRawReadDenied",
+          "expected": "Bridge原件读取在宿主层拒绝"
+        },
+        {
+          "id": "LIVE-23-A03",
+          "predicate": "noScopeEscalation",
+          "expected": "外部canary不读取、B不执行、授权根不变"
+        },
+        {
+          "id": "LIVE-23-A04",
+          "predicate": "queryArgumentRejected",
+          "expected": "委托工具携带query/context参数被拒绝"
+        },
+        {
+          "id": "LIVE-23-A05",
+          "predicate": "businessSubmitCount",
+          "expected": "0"
+        }
+      ],
+      "evidence": [
+        "injection-fixtures.json",
+        "tool-schema.json",
+        "denial-events.json",
+        "filesystem-read-audit.json"
+      ]
+    },
+    {
+      "id": "LIVE-24",
+      "title": "v3迁移后续接与旧原件诚实标记",
+      "suite": "fault",
+      "evidenceTier": "LIVE_FAULT",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "用v3 fixture schema创建旧binding、成功业务ref、unknown outbox、tainted任务、已裁剪旧结果；native业务session由真实runtime预先创建。",
+        "迁移自身不调用LLM；迁移后在无tainted的独立branch验证真实续接。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "runner",
+          "detail": "先dry-run，再正式迁移；记录before/after checksums和row counts。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "迁移后继续 term4u，只回答上次记住的校验词。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "独立tainted分支尝试新建，验证仍blocked。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-24-A01",
+          "predicate": "migrationPreservesIdentity",
+          "expected": "native IDs、lastResponseAt、cursor/dedup/outbox状态不丢"
+        },
+        {
+          "id": "LIVE-24-A02",
+          "predicate": "legacyHonesty",
+          "expected": "旧裁剪结果标legacy_truncated，不标完整raw"
+        },
+        {
+          "id": "LIVE-24-A03",
+          "predicate": "sameNativeSession",
+          "expected": "健康分支续接原业务ID"
+        },
+        {
+          "id": "LIVE-24-A04",
+          "predicate": "taintPreserved",
+          "expected": "新Route/新业务不能绕过原blocked"
+        },
+        {
+          "id": "LIVE-24-A05",
+          "predicate": "noMigrationReplay",
+          "expected": "迁移没有重放旧任务"
+        }
+      ],
+      "evidence": [
+        "migration-diff.json",
+        "backup-manifest.json",
+        "resume-trace.json",
+        "legacy-artifact-status.json"
+      ]
+    },
+    {
+      "id": "LIVE-25",
+      "title": "父子等待不死锁与跨请求FIFO",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business-codex"
+      ],
+      "setup": [
+        "同scope短时间连续发送两个真实业务请求；第一轮工具等待fixture脚本，第二轮媒体准备较快。",
+        "management与business使用独立调度槽；另发程序/status。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在 term4u 运行 first-task 测试脚本，结束后报告。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "继续当前项目，执行 second-task 测试脚本。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "第一轮运行时调用/status，并记录第二轮尚未开始。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-25-A01",
+          "predicate": "fifoOrder",
+          "expected": "第一轮业务终结后第二轮才开始；第二轮不越过preparing/routing"
+        },
+        {
+          "id": "LIVE-25-A02",
+          "predicate": "noDeadlock",
+          "expected": "父Bridge/Route等待不占business槽，两个请求都能完成"
+        },
+        {
+          "id": "LIVE-25-A03",
+          "predicate": "controlResponsiveness",
+          "expected": "status可在第一业务运行时返回"
+        },
+        {
+          "id": "LIVE-25-A04",
+          "predicate": "sameNativeSession",
+          "expected": "无new/expiry时第二轮沿用第一session"
+        }
+      ],
+      "evidence": [
+        "scheduler-timeline.json",
+        "slot-ownership.json",
+        "status-response.json"
+      ]
+    },
+    {
+      "id": "LIVE-26",
+      "title": "真实1M窗口Route跨80%换代且业务session不变",
+      "suite": "large-context",
+      "evidenceTier": "LIVE_LARGE_CONTEXT",
+      "status": "NOT_RUN",
+      "repeat": 1,
+      "requires": [
+        "live-controller",
+        "live-business-codex",
+        "live-large-context-consent"
+      ],
+      "setup": [
+        "与目标部署完全相同daily模型/high/1M有效窗口；先建立业务session B并保存其native ID。",
+        "使用固定大小合成文本页通过Route只读历史/fixture工具逐轮累积，page是数据不是指令。",
+        "不调小contextWindow、不注入usage、不用累计计费；总实测token与请求次数预算由operator显式批准。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "runner",
+          "detail": "持续完成真实Route轮次并记录真实last usage；低于80%时继续复用，不能根据下一页/预计回答提前轮换。"
+        },
+        {
+          "order": 2,
+          "action": "runner",
+          "detail": "首次观测到5*used>=4*window且该管理轮结束后，提交下一轮用户消息。"
+        },
+        {
+          "order": 3,
+          "action": "user",
+          "detail": "继续 term4u，只回复之前记住的业务校验词。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-26-A01",
+          "predicate": "realUsageCrossing",
+          "expected": "至少一份真实sample在80%下，一份在80%上或恰好；无usage/window伪造"
+        },
+        {
+          "id": "LIVE-26-A02",
+          "predicate": "rotationTiming",
+          "expected": "首次>=80%后的下一管理输入使用新generation；此前低于80%未因预算预测换代"
+        },
+        {
+          "id": "LIVE-26-A03",
+          "predicate": "businessBindingUnchanged",
+          "expected": "换代前后B业务native ID相同"
+        },
+        {
+          "id": "LIVE-26-A04",
+          "predicate": "handoffFacts",
+          "expected": "scope/dir/profile/绑定/job事实从Registry保留"
+        },
+        {
+          "id": "LIVE-26-A05",
+          "predicate": "queryByteIdentity",
+          "expected": "后续业务仍仅收到原始query"
+        },
+        {
+          "id": "LIVE-26-A06",
+          "predicate": "noNativeAutoCompactionSubstitution",
+          "expected": "不是native自动压缩后伪称应用换代"
+        }
+      ],
+      "evidence": [
+        "actual-usage-series.jsonl",
+        "rotation-boundary.json",
+        "binding-before-after.json",
+        "actual-cost.json",
+        "config-hash.json"
+      ]
+    },
+    {
+      "id": "LIVE-27",
+      "title": "真实1M窗口Bridge跨80%换代且不披露raw",
+      "suite": "large-context",
+      "evidenceTier": "LIVE_LARGE_CONTEXT",
+      "status": "NOT_RUN",
+      "repeat": 1,
+      "requires": [
+        "live-controller",
+        "live-business-codex",
+        "live-large-context-consent"
+      ],
+      "setup": [
+        "使用目标daily/high/1M真实窗口；建立A/B目录Route与业务binding。",
+        "用真实用户query+短答案/受控目录元信息累积Bridge管理上下文；不得向Bridge灌入raw answer来凑容量。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "runner",
+          "detail": "逐轮记录真实usage，低于80%保持generation；首次完成轮达到80%后发送下一轮。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "切回 term4u，继续上次会话，只说项目名。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-27-A01",
+          "predicate": "realUsageCrossing",
+          "expected": "真实窗口及usage跨80%；不得缩窗口"
+        },
+        {
+          "id": "LIVE-27-A02",
+          "predicate": "rotationTiming",
+          "expected": "Bridge按固定80%在轮次边界换代"
+        },
+        {
+          "id": "LIVE-27-A03",
+          "predicate": "routeBindingsUnchanged",
+          "expected": "A/B的Route session和业务binding保持"
+        },
+        {
+          "id": "LIVE-27-A04",
+          "predicate": "bridgeNoRawBody",
+          "expected": "整个填充/换代/交接过程中Bridge仍不见长原件"
+        },
+        {
+          "id": "LIVE-27-A05",
+          "predicate": "queryByteIdentity",
+          "expected": "原话不改"
+        }
+      ],
+      "evidence": [
+        "actual-usage-series.jsonl",
+        "bridge-handoff.json",
+        "all-bindings-before-after.json",
+        "bridge-input-audit.json"
+      ]
+    },
+    {
+      "id": "LIVE-28",
+      "title": "查询后省略目录的工作请求与澄清续办原文",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business"
+      ],
+      "setup": [
+        "使用与LIVE-06相同的A/B隔离Git fixture；active=B，刚查过A的准确业务session。",
+        "分别运行唯一连续指代与确有多个候选的子场景；两者均使用真实Bridge/Route，不手工给模型塞选中的目录。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "看看 term4u 最近那个 session 的进度，只查历史。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "所有变更分批 commit，最后 push。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "若连续上下文唯一解析为A，验证直接处理A；若模型提出具体目标澄清，则在未提交业务时继续下一步。确有多个候选的子场景必须先澄清。"
+        },
+        {
+          "order": 4,
+          "action": "user",
+          "detail": "（仅在收到目标澄清时）就是刚才查的 term4u 那个。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-28-A01",
+          "predicate": "safeEllipticalTarget",
+          "expected": "唯一解析时仅在A执行；有歧义时零执行直至明确选择；绝不静默在B执行"
+        },
+        {
+          "id": "LIVE-28-A02",
+          "predicate": "clarificationSourceIdentity",
+          "expected": "澄清续办以sourceRequestId取第二条原始工作query，不把“就是…”当工作，不拼接两条消息"
+        },
+        {
+          "id": "LIVE-28-A03",
+          "predicate": "queryByteIdentity",
+          "expected": "实际业务文本精确等于“所有变更分批 commit，最后 push。”，带来源hash证据"
+        },
+        {
+          "id": "LIVE-28-A04",
+          "predicate": "businessSubmitCount",
+          "expected": "完整子场景业务执行一次；澄清重复消息不得再提交"
+        },
+        {
+          "id": "LIVE-28-A05",
+          "predicate": "foreignDirectoryUnchanged",
+          "expected": "B HEAD/status不变；A push只到fixture本地bare remote"
+        }
+      ],
+      "evidence": [
+        "clarification-state.json",
+        "source-request-hashes.json",
+        "actual-wire-input.json",
+        "git-before-after.json"
+      ]
+    },
+    {
+      "id": "LIVE-29",
+      "title": "短答案逐字保留且不调用Recap模型",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business"
+      ],
+      "setup": [
+        "已建立本目录业务session；本case的最终回复应短于1200 code points。",
+        "仅统计本轮answerId对应的recap任务，不能把其他角色调用混算。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在当前项目只回复一行：“短答原样保留 ✅”。不要执行工具或修改文件。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-29-A01",
+          "predicate": "shortAnswerVerbatim",
+          "expected": "捕获final、answer.md、shortText逐字节一致；不trim、不改标点、不加摘要前缀"
+        },
+        {
+          "id": "LIVE-29-A02",
+          "predicate": "recapInvocationCount",
+          "expected": "本轮LLM recap调用次数为0；source=verbatim-short"
+        },
+        {
+          "id": "LIVE-29-A03",
+          "predicate": "artifactImmutable",
+          "expected": "answer.md为独立完整原件且hash正确"
+        },
+        {
+          "id": "LIVE-29-A04",
+          "predicate": "bridgeProjection",
+          "expected": "Bridge默认后续历史得到这条原样短答，没有再生成不同摘要"
+        }
+      ],
+      "evidence": [
+        "final-bytes.sha256",
+        "short-text.sha256",
+        "recap-call-count.json",
+        "safe-history-projection.json"
+      ]
+    },
+    {
+      "id": "LIVE-30",
+      "title": "目录筛选与最近30轮不混入内部Agent事件",
+      "suite": "core",
+      "evidenceTier": "LIVE_LOCAL",
+      "status": "NOT_RUN",
+      "repeat": 3,
+      "requires": [
+        "live-controller",
+        "live-business"
+      ],
+      "setup": [
+        "在同一测试scope的A/B目录通过真实用户入口交替产生31轮短请求，包含可验证序号。",
+        "每轮完整经过真实Controller/业务模型；统计内部工具与recap事件，但不把它们当用户interaction。设置另一scope的合成私密记录作为负例。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "列出我们最近30轮问答的项目和每轮序号，只看历史，不运行业务任务。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "只看 term4u 目录关联的那些历史问答。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-30-A01",
+          "predicate": "interactionPageCount",
+          "expected": "查询第一条之前的最近30个已完成用户interaction；不计当前未完成查询，不计Bridge/Route工具内部调用"
+        },
+        {
+          "id": "LIVE-30-A02",
+          "predicate": "interactionOrder",
+          "expected": "按ingressSeq稳定排序，分页不重不漏；第31条更早记录通过cursor可查"
+        },
+        {
+          "id": "LIVE-30-A03",
+          "predicate": "directoryFilter",
+          "expected": "第二次历史列表只含A/term4u，允许自身历史查询记录按规定分类但无B业务记录"
+        },
+        {
+          "id": "LIVE-30-A04",
+          "predicate": "readScope",
+          "expected": "其他scope记录、answerRef和标题均不可见"
+        },
+        {
+          "id": "LIVE-30-A05",
+          "predicate": "businessSubmitCount",
+          "expected": "两次列表查询新增业务执行次数为0"
+        }
+      ],
+      "evidence": [
+        "interaction-page.json",
+        "directory-page.json",
+        "pagination-cursors.json",
+        "scope-negative-check.json",
+        "model-invocations.json"
+      ]
+    },
+    {
+      "id": "LIVE-W01",
+      "title": "真实微信端完整三层与原件投递",
+      "suite": "weixin",
+      "evidenceTier": "LIVE_WEIXIN",
+      "status": "NOT_RUN",
+      "repeat": 1,
+      "requires": [
+        "live-controller",
+        "live-business-codex",
+        "live-weixin-consent"
+      ],
+      "setup": [
+        "owner已配对专用微信bot；配置默认root为测试fixture，不允许真实生产目录。",
+        "模型/业务已通过core；实际手机与iLink，不能用mock HTTP冒充。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "手机发送：去那个视频配音的测试项目，读README后给我一份较长但不超过自动投递上限的说明。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "手机发送：继续，只说上轮提到的主要功能。"
+        },
+        {
+          "order": 3,
+          "action": "runner",
+          "detail": "owner核对手机收到的段数、顺序和尾段；保存脱敏证据编号。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-W01-A01",
+          "predicate": "liveTransport",
+          "expected": "真实iLink ingress与outbox ACK可关联messageId/jobId"
+        },
+        {
+          "id": "LIVE-W01-A02",
+          "predicate": "sameNativeSession",
+          "expected": "第二轮续接正确业务session"
+        },
+        {
+          "id": "LIVE-W01-A03",
+          "predicate": "rawDeliveryIntegrity",
+          "expected": "去除已定义展示包装后收到的内容与原件逐段一致"
+        },
+        {
+          "id": "LIVE-W01-A04",
+          "predicate": "receiptEvidence",
+          "expected": "手机人工确认与outbox.sent分别记录，不互相替代"
+        },
+        {
+          "id": "LIVE-W01-A05",
+          "predicate": "bridgeNoRawBody",
+          "expected": "管理模型审计仍无raw"
+        }
+      ],
+      "evidence": [
+        "weixin-ingress-redacted.json",
+        "outbox-redacted.json",
+        "phone-receipt-evidence.json",
+        "artifact-segment-hashes.json"
+      ]
+    },
+    {
+      "id": "LIVE-W02",
+      "title": "真实微信取消/语音文本与长答案分页边界",
+      "suite": "weixin",
+      "evidenceTier": "LIVE_WEIXIN",
+      "status": "NOT_RUN",
+      "repeat": 1,
+      "requires": [
+        "live-controller",
+        "live-business-codex",
+        "live-weixin-consent"
+      ],
+      "setup": [
+        "实际owner手机；使用fixture长任务和超过maxAutoParts的合成答案分两个独立分支。",
+        "语音分支只有渠道提供transcript才执行，否则记录unsupported，不调用独立ASR。"
+      ],
+      "steps": [
+        {
+          "order": 1,
+          "action": "user",
+          "detail": "在手机启动fixture长任务，然后发送/cancel。"
+        },
+        {
+          "order": 2,
+          "action": "user",
+          "detail": "独立分支通过语音发起只读任务，核对渠道transcript与下游输入hash。"
+        },
+        {
+          "order": 3,
+          "action": "user",
+          "detail": "独立分支请求超自动分段上限的报告，再用/result读取剩余段。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "LIVE-W02-A01",
+          "predicate": "cancelHonesty",
+          "expected": "用户收到的取消状态与实际停止/blocked一致"
+        },
+        {
+          "id": "LIVE-W02-A02",
+          "predicate": "voiceByteIdentity",
+          "expected": "比较渠道transcript而非原始语音声音；无transcript不伪造文字"
+        },
+        {
+          "id": "LIVE-W02-A03",
+          "predicate": "partialDeliveryHonesty",
+          "expected": "超过上限明确提示剩余段，原件未裁剪；/result不启动Agent"
+        },
+        {
+          "id": "LIVE-W02-A04",
+          "predicate": "realTransportEvidence",
+          "expected": "人工收到证据与ACK分别记录"
+        }
+      ],
+      "evidence": [
+        "phone-actions-redacted.json",
+        "cancel-process-evidence.json",
+        "voice-transcript-hashes.json",
+        "partial-delivery-pages.json"
+      ]
+    }
+  ]
+}

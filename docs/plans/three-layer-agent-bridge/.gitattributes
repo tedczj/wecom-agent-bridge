@@ -1,0 +1,2 @@
+# Preserve the literal CRLF sample and the published bundle checksums.
+LIVE_LLM_CASES.md -text

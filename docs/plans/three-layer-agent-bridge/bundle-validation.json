@@ -1,0 +1,30 @@
+{
+  "status": "PASS",
+  "scope": "DESIGN_BUNDLE_OFFLINE_VALIDATION_ONLY",
+  "baselineCommit": "e7d7328c13b33f8e5feab4c1691350ed21dab2d2",
+  "checks": {
+    "jsonSchema": "PASS",
+    "caseAndAssertionIds": "PASS",
+    "markdownJsonConsistency": "PASS",
+    "fixed80AndVerbatimConfig": "PASS",
+    "referenceDdlInMemory": "PASS",
+    "referenceDdlUniqueCurrentAndRoleConstraints": "PASS",
+    "utf8Files": "PASS"
+  },
+  "counts": {
+    "liveCases": 33,
+    "caseAssertions": 145,
+    "globalAssertions": 5,
+    "offlineContractGroups": 16,
+    "referenceNewTables": 8
+  },
+  "productImplementation": "NOT_RUN",
+  "repositoryNpmCheck": "NOT_RUN",
+  "liveLlmCases": "NOT_RUN",
+  "real1M80Percent": "NOT_RUN",
+  "liveWeixin": "NOT_RUN",
+  "notes": [
+    "DDL tested only with minimal in-memory v3 placeholder tables.",
+    "This report is not evidence of installed runtime, model capability or production migration."
+  ]
+}

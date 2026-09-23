@@ -40,3 +40,7 @@ workspace 锁位于宿主用户临时私有目录，记录 bridge PID、stateRoo
 本次修复的真实验证仅公开请求模型/推理配置、识别动作、目录逻辑 ID、会话数量和活动状态计数。没有复制真实 rollout、消息预览、微信截图或模型原文到仓库；一次成功分类也不声称证明最终服务端模型路由。私有 interpreter 配置、登录信息与现场启动日志均不提交。
 
 管理进程的身份令牌、PID、就绪标记、更新阶段与原对话关联、运行产物备份均位于私有 stateRoot，不纳入提交。`/status` 仅展示管理动作、阶段、任务 ID、受限错误码与版本，不展示令牌。更新命令不继承完整宿主环境，且不向 Git/npm 转发模型 API 凭据。
+
+## Remote debug reports
+
+`/debug` is available only after normal transport identity verification and can inspect tasks from that same conversation. Reports include logical workspace IDs, path fingerprints, allowlisted error codes, task/scan/delivery states and startup checkout SHA. They exclude absolute paths, original messages, model output, native history text, authentication/context tokens, media URLs/keys and raw exceptions. Request-time snapshots remain private job state; diagnostic reports remain private command results and outbox payloads. Public verification uses synthetic fixtures only. Fingerprints are identifiers for correlation, not anonymization guarantees.

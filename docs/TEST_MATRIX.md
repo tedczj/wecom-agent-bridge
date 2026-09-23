@@ -146,3 +146,7 @@ AUTH10–AUTH11 验证新授权目录选择默认工作区 root 的兜底 profil
 AUTH12 覆盖 `/approve` 目录授权别名、原请求身份与禁止任意参数。MG01–MG08（10 个离线场景）覆盖同对话下一条确认、外来确认拒绝、非确认取消、重启前排空、维护期间拒绝新工作、进程替换、结果单独领取、去重、过期/未知送达拒绝、管理进程崩溃不自动重放、真实本地 Git 的快进/分支限制/未跟踪冲突保护、npm double 的检查失败恢复。原 start.sh 强制退出、旧锁和后端切换测试保留并扩展父子进程检查。
 
 W15 使用 iLink 协议 double 验证微信配对身份、确认消息、最新 context、最终回执和重投去重；不声称手机端实测。`smoke:maintenance --live` 在临时副本中使用真实 Git、npm ci、npm run check 和本地管理/桥接进程验证更新流程，不调用 Agent、不发送微信。
+
+## Remote debug (additional coverage; original 58 IDs retained)
+
+DBG01–DBG04 in `tests/unit/routing.test.ts` cover planner bypass, conversation ownership, task prefixes, old-task snapshot absence, state preservation, duplicate commands, historical versus current failures, hashed/bounded file samples, invalidated workspace handling and consuming pending consent without granting it. W16 in `tests/contract/weixin.test.ts` covers paired-user-only debug delivery, outbox deduplication and payload redaction through an iLink protocol double. These are offline/model-free checks, not live Agent, phone, visual or OS-isolation verification.

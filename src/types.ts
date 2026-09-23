@@ -14,6 +14,7 @@ export interface Incoming {
 export interface NormalizedInput {
   taskId: string; messageId: string; route: Route; receivedAt: number;
   text: string; images: ImageRef[]; workspaceId: string; sessionKey: string; generation: number;
+  routingDiagnostic?: import('./routing/router.ts').RoutingDiagnostic;
   originalText?: string; attachmentCount?: number; contextTaskIds?: string[];
   routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string; execution?: import('./routing/execution.ts').Execution; announce?: boolean; authorizedRequestTaskId?: string };
 }

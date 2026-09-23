@@ -1,3 +1,4 @@
+import { debugReport } from './debug.ts';
 import { Router, type Plan } from './routing/router.ts';
 import { workspaceLock } from './routing/lock.ts';
 import type { Config } from './config.ts';
@@ -33,24 +34,41 @@ export class Bridge {
     let incoming;
     try { incoming = this.normalizer(frame, this.c, this.channelId); }
     catch (e) { const code = errorCode(e, 'INVALID_MESSAGE'); log('input.rejected', { code }); return { rejected: code }; }
+    const isDebug=/^\/debug(?:\s|$)/.test(incoming.text);
+    let debugReply:string|undefined;
+    let routingAttempted=false;
     let control = incoming.text.startsWith('/');
     let reserved, plan: Plan | undefined, routingError: string | undefined,managementReply:string|undefined;
     try {
       const duplicate=this.store.duplicate(incoming); if(duplicate)return {taskId:duplicate.task_id,duplicate:true};
       const maintenance=this.store.value<Maintenance>('maintenance');
       const managementApproval=incoming.text.trim()==='/approve' && maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route);
-      if(maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route) && !managementApproval && !/^\/(help|status|cancel|result|update|restart)(\s|$)/.test(incoming.text)) {managementReply='已取消待确认的服务管理操作，未执行。如需更新或重启，请重新发送命令。';control=true;}
-      if(maintenanceActive(maintenance) && !/^\/(help|status|cancel|result|update|restart)(\s|$)/.test(incoming.text)) {routingError='MAINTENANCE_DRAINING';control=true;}
-      if(this.router && !managementApproval && !routingError && !managementReply) {
-        try { plan=await this.router.plan(incoming); control=plan.control !== undefined || plan.command !== undefined || control && !plan.selection.authorizedRequestTaskId; }
+      if(maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route) && !managementApproval && !/^\/(help|status|cancel|result|update|restart|debug)(\s|$)/.test(incoming.text)) {managementReply='已取消待确认的服务管理操作，未执行。如需更新或重启，请重新发送命令。';control=true;}
+      if(maintenanceActive(maintenance) && !/^\/(help|status|cancel|result|update|restart|debug)(\s|$)/.test(incoming.text)) {routingError='MAINTENANCE_DRAINING';control=true;}
+      if(this.router && !isDebug && !managementApproval && !routingError && !managementReply) {
+        try { routingAttempted=true;plan=await this.router.plan(incoming); control=plan.control !== undefined || plan.command !== undefined || control && !plan.selection.authorizedRequestTaskId; }
         catch(e) { routingError=errorCode(e,'ROUTING_UNAVAILABLE');control=true; }
         if (control && incoming.media.length && !plan?.authorizationReply) { routingError='COMMAND_IMAGES'; plan=undefined; }
       }
       if(control && incoming.media.length && !plan?.authorizationReply) {routingError='COMMAND_IMAGES';plan=undefined;}
+      if(isDebug && !routingError && !managementReply) {
+        try {debugReply=await debugReport(this.c,this.store,incoming,this.router);}catch(e){routingError=errorCode(e);}
+      }
       if(this.stopped)return {rejected:'STOPPING'};
       reserved=this.store.atomic(()=>{
         const result=this.store.reserve(incoming,control?'command':'agent',plan?.selection);
         if(!result.duplicate) {
+          if(this.router && routingAttempted) {
+            const input=JSON.parse(result.job.input_json);input.routingDiagnostic=this.router.diagnostic;
+            this.store.db.prepare('UPDATE jobs SET input_json=? WHERE task_id=?').run(JSON.stringify(input),result.job.task_id);
+          }
+          // A diagnostic is still the next message: it cannot leave an older consent pending.
+          if(isDebug && this.router) {
+            const state=this.router.state(incoming);
+            if(state.authorization) {state.authorization=undefined;this.store.put('conversation:'+this.router.scope(incoming),state);
+              if(debugReply!==undefined)debugReply+='\n已取消待确认的目录授权，未授权、未执行。';}
+          }
+          if(debugReply!==undefined)this.store.complete(result.job.task_id,'succeeded',debugReply);
           if(maintenance?.phase==='approval' && maintenance.route===JSON.stringify(incoming.route) && (!managementApproval || incoming.media.length))this.store.put('maintenance',{...maintenance,phase:'failed',code:'APPROVAL_CANCELLED'});
           if(!routingError)plan?.commit();
           if(managementReply && !routingError)this.store.complete(result.job.task_id,'succeeded',managementReply);
@@ -63,7 +81,7 @@ export class Bridge {
     const { job, duplicate } = reserved;
     if (duplicate) return { taskId: job.task_id, duplicate: true };
     if (control) {
-      if (routingError || managementReply || plan?.control !== undefined) { this.kick(); return {taskId:job.task_id,duplicate:false}; }
+      if (debugReply!==undefined || routingError || managementReply || plan?.control !== undefined) { this.kick(); return {taskId:job.task_id,duplicate:false}; }
       this.store.atomic(() => {
         try { const answer = this.command(job, plan?.command ?? incoming.text); if(answer.pending)this.store.maintenanceAck(job.task_id,answer.text);else this.store.complete(job.task_id, 'succeeded', answer.text, undefined, ['queued'], answer.parts); }
         catch (e) {
@@ -104,7 +122,7 @@ export class Bridge {
     const [cmd, ...args] = text.trim().split(/\s+/);
     if(cmd==='/update' || cmd==='/restart') {invariant(!args.length,'COMMAND_ARGUMENTS');return {text:proposeMaintenance(this.c,this.store,owner,cmd.slice(1) as 'update'|'restart')};}
     if(cmd==='/approve') {invariant(!args.length,'COMMAND_ARGUMENTS');return {text:approveMaintenance(this.c,this.store,owner),pending:true};}
-    if (cmd === '/help') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `工作目录别名：${JSON.parse(owner.input_json).workspaceId}\n/help /status /new\n/cancel [taskId]\n/result taskId [part]\n/approve /update /restart${this.router?'\n/route 目录 /sessions [目录] /find 关键词 /read 序号 /resume 序号 /alias 简称 /more':''}\n/approve 仅确认目录或服务管理操作，不提升 Agent 沙箱权限。取消和失败都可能已有部分修改。`}; }
+    if (cmd === '/help') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `工作目录别名：${JSON.parse(owner.input_json).workspaceId}\n/help /status /new\n/debug [taskId]\n/cancel [taskId]\n/result taskId [part]\n/approve /update /restart${this.router?'\n/route 目录 /sessions [目录] /find 关键词 /read 序号 /resume 序号 /alias 简称 /more':''}\n/approve 仅确认目录或服务管理操作，不提升 Agent 沙箱权限。取消和失败都可能已有部分修改。`}; }
     if (cmd === '/status') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: JSON.stringify(this.store.summary(owner), null, 2)}; }
     if (cmd === '/new') { invariant(!args.length, 'COMMAND_ARGUMENTS'); return {text: `已创建新会话 generation=${this.store.newGeneration(owner)}；历史结果保留。`}; }
     if (cmd === '/cancel') {

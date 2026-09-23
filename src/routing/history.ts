@@ -12,7 +12,7 @@ export interface HistoryEntry {
   lastResponseAt: number | null; preview: string[]; resumable: boolean; sessionKey?: string;
   activity?: 'idle' | 'active' | 'interrupted' | 'unknown';
 }
-export interface HistoryScan { queue: string[]; files: string[]; entries: HistoryEntry[]; issues?: Record<string,number>; source?: 'native-index' | 'files' }
+export interface HistoryScan { queue: string[]; files: string[]; entries: HistoryEntry[]; issues?: Record<string,number>; source?: 'native-index' | 'files'; samples?: {file: string; code: string}[] }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fileLimit=256*1024*1024, frameLimit=8*1024*1024;
 function time(v: unknown): number | null { const n = typeof v === 'string' ? Date.parse(v) : NaN; return Number.isFinite(n) ? n : null; }
@@ -150,6 +150,7 @@ export class NativeHistory {
           const code=e instanceof BridgeError?e.code:(e as NodeJS.ErrnoException).code==='ENOENT'?'HISTORY_FILE_MISSING':undefined;
           if(!code || !['HISTORY_FORMAT','HISTORY_INCOMPLETE','HISTORY_FILE_LIMIT','HISTORY_FRAME_LIMIT','HISTORY_HEADER_LIMIT','HISTORY_CHANGED','HISTORY_BRANCH','HISTORY_FILE_MISSING'].includes(code))throw e;
           scan.issues[code]=(scan.issues[code]??0)+1;
+          scan.samples??=[];if(scan.samples.length<8)scan.samples.push({file:hash(file).slice(0,16),code});
         }
         if(totalBytes>=32*1024*1024)break;
       } else {

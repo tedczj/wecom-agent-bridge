@@ -213,3 +213,18 @@ test('W15: paired Weixin management approval and final delivery are durable and 
   assert.equal(sends.length,3);assert.equal(sends.at(-1).to_user_id,auth.userId);assert.match(sends.at(-1).item_list[0].text_item.text,/重启完成/);
   assert(!existsSync(path.join(h.c.codex.home,'capture.json')));
 });
+
+test('W16: paired Weixin debug delivers redacted report once without invoking an Agent (protocol double)',async t=>{
+  const sends:any[]=[];
+  const h=await channelService(t,new WeixinApi(async(_url,init)=>{sends.push(JSON.parse(init!.body as string).msg);return response({});}));
+  const signal=new AbortController().signal;
+  const request=frame('debug-request','/debug');
+  await h.receiver.accept({...request,from_user_id:'stranger'},signal);await h.service.settle();assert.equal(sends.length,0);
+  await h.receiver.accept(request,signal);await h.service.settle();const count=sends.length;assert(count>0);
+  assert(sends.every(msg=>msg.to_user_id===auth.userId));
+  const text=sends.map(msg=>msg.item_list[0].text_item.text).join('');assert.match(text,/Bridge debug v1/);
+  assert(!text.includes(auth.token));assert(!text.includes(request.context_token));assert(!text.includes(h.root));
+  await h.receiver.accept(request,signal);await h.service.settle();assert.equal(sends.length,count);
+  assert.equal(h.service.store.db.prepare("SELECT count(*) n FROM jobs WHERE kind='agent'").get()!.n,0);
+  assert(!existsSync(path.join(h.c.codex.home,'capture.json')));
+});

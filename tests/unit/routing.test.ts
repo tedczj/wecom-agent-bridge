@@ -424,3 +424,55 @@ test('PL13: restart preflight validates the queued override instead of the direc
   h.c.routing!.profiles[0]!.version='changed';writeFileSync(file,JSON.stringify(h.c));
   assert.throws(()=>execFileSync(process.execPath,[path.resolve('dist/scripts/restart-bridge.js'),file,path.resolve('dist/src/cli.js')],{stdio:'pipe'}),/PROFILE_CHANGED/);
 });
+
+test('DBG01: debug bypasses planner, scopes task prefixes, redacts payloads and preserves route state',async t=>{
+  const h=configured(t);h.c.routing!.history=true;native(h,1,1000,h.second);
+  await h.submit('/sessions second');
+  const before=JSON.stringify(h.router.state(h.incoming()));
+  writeFileSync(path.join(h.c.codex.home,'sessions','broken.jsonl'),'broken\n');
+  const failed=await h.submit('private user prompt');
+  const input=JSON.parse(failed.input_json);delete input.routingDiagnostic;
+  h.store.db.prepare('UPDATE jobs SET input_json=?,result_text=? WHERE task_id=?').run(JSON.stringify(input),'private model result',failed.task_id);
+  // Even an unavailable interpreter must not prevent diagnostics.
+  h.c.routing!.interpreter={provider:'http',endpoint:'https://invalid.invalid',model:'unused',timeoutMs:1};
+  const report=await h.submit('/debug '+failed.task_id.slice(0,8));
+  assert.equal(report.status,'succeeded');
+  assert.match(report.result_text!,/旧版本未记录/);
+  assert.match(report.result_text!,/"lastListing": "second"/);
+  assert(!report.result_text!.includes(h.root));assert(!report.result_text!.includes('private user prompt'));assert(!report.result_text!.includes('private model result'));
+  assert.equal(JSON.stringify(h.router.state(h.incoming())),before);
+  const other=await h.submit('/debug '+failed.task_id.slice(0,8),'other');assert.equal(other.error_code,'TASK_NOT_FOUND');
+  const bad=await h.submit('/debug ../../secret');assert.equal(bad.error_code,'COMMAND_ARGUMENTS');
+  const frame=fixture('/debug');const first=await h.bridge.accept(frame);const second=await h.bridge.accept(frame);assert.equal(second.duplicate,true);assert.equal(second.taskId,first.taskId);
+});
+
+test('DBG02: failed routing saves issue fingerprints; current scan is separate and never replays work',async t=>{
+  const h=configured(t);h.c.routing!.history=true;native(h);
+  const file=path.join(h.c.codex.home,'sessions','secret-token-file.jsonl');writeFileSync(file,'secret-token-broken-json\n');
+  const task=await h.submit('private prompt');assert.equal(task.error_code,'HISTORY_UNVERIFIED');
+  const snapshot=JSON.parse(task.input_json).routingDiagnostic;
+  assert.equal(snapshot.action,'work');assert.equal(snapshot.directory,'test');assert.equal(snapshot.scans[0].issues.HISTORY_FORMAT,1);
+  assert.match(snapshot.scans[0].samples[0].file,/^[a-f0-9]{16}$/);
+  rmSync(file);
+  const report=await h.submit('/debug '+task.task_id.slice(0,8));assert.equal(report.status,'succeeded');
+  const parsed=JSON.parse(report.result_text!.slice(report.result_text!.indexOf('\n')+1));
+  assert.deepEqual(parsed.current.scans[0].issues,{});assert.equal(parsed.tasks[0].routingAtRequest.scans[0].issues.HISTORY_FORMAT,1);
+  assert.equal(parsed.tasks[0].started,false);assert.equal(h.backend.calls.length,0);
+  assert(!report.result_text!.includes('secret-token'));assert(!report.result_text!.includes(h.root));assert(!report.result_text!.includes('private prompt'));
+});
+
+test('DBG03: debug remains available with replaced active directory, and bounds history samples',async t=>{
+  const h=configured(t);await h.submit('/route second');h.c.routing!.history=true;
+  native(h);for(let n=0;n<12;n++)writeFileSync(path.join(h.c.codex.home,'sessions',`bad-${n}.jsonl`),'broken\n');
+  const result=await h.router.history.scan(h.router.current(h.incoming()));assert.equal(result.scan.samples!.length,8);
+  renameSync(h.second,h.second+'-moved');
+  const report=await h.submit('/debug');assert.equal(report.status,'succeeded');assert.match(report.result_text!,/"error"/);assert.equal(h.backend.calls.length,0);
+});
+
+test('DBG04: debug consumes pending directory consent without granting or running it',async t=>{
+  const h=configured(t),i=h.incoming(),state=h.router.state(i);
+  state.authorization={directory:h.router.current(i).directory,digest:'synthetic',version:'synthetic',at:Date.now(),taskId:randomUUID()};
+  h.store.put('conversation:'+h.router.scope(i),state);
+  const report=await h.submit('/debug');assert.equal(report.status,'succeeded');assert.match(report.result_text!,/已取消待确认/);
+  assert.equal(h.router.state(i).authorization,undefined);assert.equal(h.backend.calls.length,0);
+});

@@ -23,6 +23,7 @@ export interface State {
     {kind:'history'; directory: Directory; execution?: Execution; scan: HistoryScan; query?: string; at: number; version: string; token: string} |
     {kind:'results'; directory: Directory; execution?: Execution; entries: HistoryEntry[]; at: number; version: string; token: string};
 }
+export interface RoutingDiagnostic { action?: string; directory?: string; directoryKey?: string; scans: {directory: string; directoryKey: string; source?: string; partial: boolean; entries: number; issues: Record<string,number>; samples: {file:string;code:string}[]}[] }
 export interface Plan { selection: Selection; control?: string; command?:string; authorizationReply?:boolean; commit(): void }
 class DirectoryApprovalRequired extends BridgeError {
   constructor(readonly path:string) { super('DIRECTORY_UNAUTHORIZED'); }
@@ -30,6 +31,25 @@ class DirectoryApprovalRequired extends BridgeError {
 const consent=/^(同意授权|确认授权|同意|确认|yes|\/approve)[。！!]?$/iu;
 export class Router {
   readonly catalog: Catalog;
+  diagnostic: RoutingDiagnostic = {scans:[]};
+  private async scan(t:Target,state?:HistoryScan) {
+    const result=await this.history.scan(t,state);
+    this.diagnostic.scans.push({directory:t.directory.id,directoryKey:hash(t.directory.path).slice(0,16),source:result.scan.source,partial:result.partial,entries:result.scan.entries.length,issues:{...result.scan.issues},samples:[...(result.scan.samples??[])]});
+    this.diagnostic.scans=this.diagnostic.scans.slice(-6);return result;
+  }
+  async debug(i:Incoming) {
+    const router=this.scoped(i),state=router.state(i);
+    router.diagnostic={scans:[]};
+    const targets=[state.active??router.catalog.configured.find(w=>w.id===this.c.workspace.id)!,...(state.listing?[state.listing.workspace]:[])];
+    const scans=[];const seen=new Set<string>();
+    for(const d of targets) {
+      if(seen.has(d.identity))continue;seen.add(d.identity);
+      try {const target=router.catalog.target(d,d.identity===state.listing?.workspace.identity?state.listing.execution:state.executions?.[d.identity]);
+        if(this.c.routing!.history)await router.scan(target);
+      } catch(e) {scans.push({directory:d.id,error:errorCode(e)});}
+    }
+    return {observedAt:new Date().toISOString(),active:state.active?.id??this.c.workspace.id,lastListing:state.listing?.workspace.id,historyEnabled:this.c.routing!.history,scans:[...router.diagnostic.scans,...scans],note:"当前只读检查，不代表旧任务当时状态；partial=true 表示扫描未完成。"};
+  }
   private controller=new AbortController();
   private stateOverride?:State;
   private approvedRequestTaskId?:string;
@@ -37,7 +57,7 @@ export class Router {
   constructor(private c: Config, private store: Store, readonly history = new NativeHistory(),private grants?:DirectoryGrant[],snapshot?:Catalog) { this.catalog = new Catalog(c,grants,snapshot); }
   scope(i: Pick<Incoming,'route'>): string { return hash([i.route.channelId,i.route.kind,i.route.targetId,i.route.senderId]); }
   private scoped(i:Pick<Incoming,'route'>,grants=this.store.value<DirectoryGrant[]>('directory-grants:'+this.scope(i))??[]):Router {
-    const router=new Router(this.c,this.store,this.history,grants,this.catalog);router.controller=this.controller;return router;
+    const router=new Router(this.c,this.store,this.history,grants,this.catalog);router.controller=this.controller;router.diagnostic=this.diagnostic;return router;
   }
   executionTarget(route:Route,d:Directory,execution?:Execution):Target { return this.scoped({route}).catalog.target(d,execution); }
   base(i: Incoming,t: Target): string { return baseKey(i.route,t.directory.id,t.digest); }
@@ -123,7 +143,7 @@ export class Router {
     } else if (e.ref.kind === 'pi') invariant(existsSync(e.ref.sessionFile) || e.ref.hasHistory === false,'SESSION_MISSING');
     else if (this.c.routing!.history) {
       // Bridge-owned Codex UUIDs must still exist before any prompt is submitted.
-      const result=await this.history.scan(t); invariant(!result.partial && !Object.keys(result.scan.issues??{}).length,'HISTORY_PARTIAL');
+      const result=await this.scan(t); invariant(!result.partial && !Object.keys(result.scan.issues??{}).length,'HISTORY_PARTIAL');
       const fresh=result.scan.entries.find(x=>x.ref.kind==='codex' && x.ref.threadId===(e.ref as {threadId:string}).threadId);
       invariant(fresh,'SESSION_MISSING');if(resume)invariant(fresh.resumable,'SESSION_NOT_RESUMABLE');
     }
@@ -186,14 +206,15 @@ export class Router {
     }
     let native:HistoryEntry[]=[],partial=false,issues:HistoryScan['issues']={};
     if(this.c.routing!.history) {
-      let result=await this.history.scan(t);
-      for(let n=0;result.partial && n<2;n++)result=await this.history.scan(t,result.scan);
+      let result=await this.scan(t);
+      for(let n=0;result.partial && n<2;n++)result=await this.scan(t,result.scan);
       native=result.scan.entries;partial=result.partial;issues=result.scan.issues;
     }
     const reply=this.list(i,state,t,native,intent.selector);
     return {directory:t.directory.path,reply,partial,issues,entries:state.listing!.entries.map(e=>({handle:e.handle,title:e.title,activity:e.activity,resumable:e.resumable,lastResponseAt:e.lastResponseAt,preview:e.preview.slice(-2)}))};
   }
   async plan(i: Incoming): Promise<Plan> {
+    this.diagnostic={scans:[]};
     const router=this.scoped(i),state=router.state(i);
     if(state.authorization)return router.confirmAuthorization(i,state);
     if(/^(同意授权|确认授权|\/approve)[。！!]?$/u.test(i.text.trim()))return router.control(i,state,'当前没有待确认的目录授权请求，未执行任务。');
@@ -223,6 +244,7 @@ export class Router {
       context.observations.push({request:intent,result:await this.inspect(i,state,intent)});
       intent=await interpret(i.text,this.c.routing!.interpreter,context,this.c,this.controller.signal);
     }
+    this.diagnostic.action=intent.action;
     if(intent.resetContext) {invariant(['work','new','switch'].includes(intent.action),'ROUTER_CONTEXT_CONFLICT');intent={...intent,action:'new',execute:intent.execute??intent.action==='work'};}
     if(this.approvedRequestTaskId && (intent.action==='work' && intent.execute!==false || intent.action==='switch' && intent.execute))intent={...intent,action:'new',execute:true};
     const contextIds=recent.filter(job=>intent.contextIds?.includes(job.task_id)).map(job=>job.task_id);
@@ -261,7 +283,7 @@ export class Router {
         return make(`已找到${switchTo?'并切换到':''}目录 ${t.directory.id}，请发送接下来的任务。`);
       }
       t=this.catalog.target(p.directory,p.execution);
-      const result=await this.history.scan(t,p.scan); p.at=now;
+      const result=await this.scan(t,p.scan); p.at=now;
       if (result.partial) return make('历史查询尚未完成（partial），请说“继续搜索”。');
       state.pending=undefined; return make(this.list(i,state,t,result.scan.entries,p.query)+this.issueNotice(result.scan));
     }
@@ -271,6 +293,7 @@ export class Router {
       t=this.target(found.directory!,state); switchTo=['switch','new'].includes(intent.action);
     } else if (intent.action === 'switch') return make('尚未切换：请指定目标目录名称或路径。');
     else if (state.active) t=this.target(state.active,state); // stale binding is an error, never default work
+    this.diagnostic.directory=t.directory.id;this.diagnostic.directoryKey=hash(t.directory.path).slice(0,16);
     const previousDigest=t.digest;
     if(intent.execution) {
       invariant(['work','new','switch'].includes(intent.action),'EXECUTION_ACTION');
@@ -286,13 +309,13 @@ export class Router {
     }
     if (['list','find'].includes(intent.action)) {
       if (!this.c.routing!.history) return make(this.list(i,state,t,[],intent.selector));
-      const result=await this.history.scan(t);
+      const result=await this.scan(t);
       if (result.partial) {state.pending={kind:'history',directory:t.directory,execution:t.execution,scan:result.scan,query:intent.selector,at:now,version:this.catalog.version,token:randomUUID()}; return make('历史查询尚未完成（partial），请说“继续搜索”。');}
       return make(this.list(i,state,t,result.scan.entries,intent.selector)+this.issueNotice(result.scan));
     }
     if (['read','resume'].includes(intent.action)) {
       const snapshot=state.listing; invariant(snapshot && now-snapshot.at<=900000,'SESSION_LIST_EXPIRED');
-      t=this.catalog.target(snapshot.workspace,snapshot.execution); invariant(t.digest===snapshot.digest,'PROFILE_CHANGED');
+      t=this.catalog.target(snapshot.workspace,snapshot.execution);this.diagnostic.directory=t.directory.id;this.diagnostic.directoryKey=hash(t.directory.path).slice(0,16); invariant(t.digest===snapshot.digest,'PROFILE_CHANGED');
       explicit=/^[1-9]\d*$/.test(intent.selector??'') ? snapshot.entries[Number(intent.selector)-1] : snapshot.entries.find(e=>e.handle===intent.selector);
       invariant(explicit,'SESSION_NOT_FOUND'); await this.validateHistory(i,t,explicit,intent.action==='resume');
       if (intent.action==='read') return make(explicit.preview.join('\n').slice(0,8000) || '没有可展示的近期消息。');
@@ -319,7 +342,7 @@ export class Router {
         selection={...selection,fresh:false,sessionKey:bound.session_key,reason:busy?'active':'bound'};
       } else selection.reason='expired-or-unverified';
     } else if (this.c.routing!.history) {
-      const result=await this.history.scan(t);
+      const result=await this.scan(t);
       if (result.partial) {
         state.pending={kind:'history',directory:t.directory,execution:t.execution,scan:result.scan,at:now,version:this.catalog.version,token:randomUUID()};
         return make('原生历史发现尚未完成（partial），未创建任务；请说“继续搜索”后选择历史或明确新建。');

@@ -1,4 +1,15 @@
-# 当前验证记录
+# 当前验证记录：远程 debug
+
+- `npm ci --no-audit --no-fund` exit 0，按 lockfile 安装 16 个包；未升级依赖，未运行 audit。
+- `npm run check` exit 0：类型检查、构建、216 tests，216 passed，0 failed / cancelled / skipped。
+- DBG01–DBG04 和 W16 为新增离线、无模型验证：同对话任务前缀查询、路由模型绕过、旧任务无快照、历史失败快照与当前检查分离、文件指纹脱敏与样本上限、目录失效、去重、待授权消费，以及配对微信协议 double 的结果投递。
+- 第一轮检查 214 项中 DBG01 失败：夹具执行了普通工作却拿执行前状态作比较；改为明确触发历史校验失败后重跑。最终 216 项全部通过。
+- 既有 MG 更新/重启离线测试继续通过。未连接截图所在远端，未发送真实微信消息，未完成远端更新或手机端 `/debug` 验收，也未重放截图中的 commit/push 任务。
+- `git diff --check` exit 0。原 58 验收 ID 保留；当前源码清单包含 `src/debug.ts`。不提交用户截图、真实任务内容、认证或运行状态。
+
+以下为此前验证记录，其 live 结果不代表本轮 debug 或远端验收。
+
+# 此前组合路由验证记录
 
 验证日期：2026-09-23。环境：macOS / Darwin arm64、Node v24.15.0、npm 11.12.1、Codex CLI 0.155.1。
 
@@ -15,7 +26,7 @@
 | 默认启动配置查找 | HOME / XDG 两项隔离启动测试通过，兼容 macOS `sh start.sh` |
 | 微信端新版消息收发 | 现场已记录用户明确授权后的一次任务；兜底修复后服务已重启、有效配置已核对，手机端新任务展示尚未复测 |
 
-[此前组合路由结果摘要](evidence/planner-verification.txt)和[本次交互授权摘要](evidence/authorization-verification.txt)是已执行命令的结果摘录，不是完整控制台日志。[源码 SHA-256 清单](source-manifest.sha256)绑定当前源码/测试输入。
+[此前组合路由结果摘要](evidence/planner-verification.txt)和[本次交互授权摘要](evidence/authorization-verification.txt)是已执行命令的结果摘录，不是完整控制台日志。[源码 SHA-256 清单](source-manifest.sha256)记录源码/测试输入；当前清单已随 debug 变更刷新。
 
 ## 微信管理命令（2026-09-23）
 

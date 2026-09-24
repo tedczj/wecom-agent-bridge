@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { setup, fixture } from '../helpers.ts';
 import { normalize } from '../../src/local.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { NativeCatalog, backendHomeKey, directoryIdentity } from '../../src/history/catalog.ts';
 import { ControllerRegistry } from '../../src/orchestration/registry.ts';
 import { NativeReader } from '../../src/history/reader.ts';
@@ -15,7 +15,7 @@ import { ResumeVerifier } from '../../src/history/verifier.ts';
 import type { Target } from '../../src/routing/catalog.ts';
 
 test('OFFLINE M5: exact native lookup ignores unrelated corrupt/large bodies and metadata listing reads no body', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const root = path.join(f.c.codex.home, 'sessions'); mkdirSync(root);
   const db = new DatabaseSync(path.join(f.c.codex.home, 'state_5.sqlite')); t.after(() => db.close());
   db.exec('CREATE TABLE threads (id TEXT PRIMARY KEY,cwd TEXT,rollout_path TEXT,title TEXT,created_at INTEGER,updated_at INTEGER,archived INTEGER)');
@@ -48,7 +48,7 @@ test('OFFLINE M5: exact native lookup ignores unrelated corrupt/large bodies and
   assert.equal((await new NativeCatalog(store, request.conversation_scope).listMetadata(target)).entries.some(e => e.ref.kind === 'codex' && e.ref.threadId === owned), true);
 });
 test('OFFLINE M5: missing index uses header-only fallback; broken candidates never masquerade as empty complete history', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const target: Target = { config: f.c, digest: 'profile', directory: { id: 'test', path: f.workspace, identity: 'inode', profile: 'read', aliases: [], description: '' } };
   const catalog = new NativeCatalog(store, 'scope');
   const empty = await catalog.listMetadata(target);
@@ -70,7 +70,7 @@ test('OFFLINE M5: missing index uses header-only fallback; broken candidates nev
   await assert.rejects(catalog.locateExact(target, { kind: 'codex', threadId: randomUUID() }), /HISTORY_EXACT_NOT_FOUND/);
 });
 test('OFFLINE M5: revision-bound completion cache orders complete coverage and invalidates changed files', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const root = path.join(f.c.codex.home, 'sessions'); mkdirSync(root);
   const db = new DatabaseSync(path.join(f.c.codex.home, 'state_5.sqlite')); t.after(() => db.close());
   db.exec('CREATE TABLE threads (id TEXT PRIMARY KEY,cwd TEXT,rollout_path TEXT,title TEXT,created_at INTEGER,updated_at INTEGER,archived INTEGER)');
@@ -102,7 +102,7 @@ test('OFFLINE M5: revision-bound completion cache orders complete coverage and i
   assert.equal(changed.orderBasis, 'updated-at'); assert.equal(changed.entries.filter(entry => entry.lastCompletedAt === null).length, 1);
 });
 test('OFFLINE M5: exact indexed lookup rejects a valid foreign header without reading its body', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const root = path.join(f.c.codex.home, 'sessions'); mkdirSync(root);
   const other = path.join(f.root, 'other'); mkdirSync(other);
   const id = randomUUID(), file = path.join(root, id + '.jsonl');

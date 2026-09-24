@@ -10,10 +10,10 @@ import { DeliveryError } from '../../src/errors.ts';
 import { setup,fixture,FakeChannel } from '../helpers.ts';
 function rows(store:Store) {return store.db.prepare('SELECT * FROM outbox').all() as Array<{state:string;attempts:number}>;}
 function ready(h:ReturnType<typeof setup>,s:Store,text='hello',session='default') {const job=s.reserve(normalize(fixture(text,session),h.c,'local:codex'),'agent').job;s.prepared(job.task_id,[]);return job;}
-test('schema: old channel database is refused without changing its version',t=>{
- const h=setup(t),file=path.join(h.c.stateRoot,'old.sqlite'),old=new DatabaseSync(file);old.exec('PRAGMA user_version=1; CREATE TABLE sentinel(value TEXT); INSERT INTO sentinel VALUES (\'kept\');');old.close();
+for (const version of [1, 2]) test(`schema: v${version} database is refused without changing its version or data`,t=>{
+ const h=setup(t),file=path.join(h.c.stateRoot,'old.sqlite'),old=new DatabaseSync(file);old.exec(`PRAGMA user_version=${version}; CREATE TABLE sentinel(value TEXT); INSERT INTO sentinel VALUES ('kept');`);old.close();
  assert.throws(()=>new Store(file,h.c),/LEGACY_STATE_REQUIRES_NEW_ROOT/);
- const check=new DatabaseSync(file);assert.equal(check.prepare('PRAGMA user_version').get()!.user_version,1);assert.equal(check.prepare('SELECT value FROM sentinel').get()!.value,'kept');check.close();
+ const check=new DatabaseSync(file);assert.equal(check.prepare('PRAGMA user_version').get()!.user_version,version);assert.equal(check.prepare('SELECT value FROM sentinel').get()!.value,'kept');check.close();
 });
 test('state: workspace identity and backend home cannot silently change',t=>{
  const h=setup(t),s=h.store(),file=path.join(h.c.stateRoot,'bridge.sqlite');

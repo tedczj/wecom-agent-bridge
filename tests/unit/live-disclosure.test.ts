@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setup, fixture } from '../helpers.ts';
 import { bridgeDisclosure } from '../live/bridge-disclosure.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
 import { normalize } from '../../src/local.ts';
 
@@ -24,7 +24,7 @@ test('OFFLINE disclosure oracle: a completed no-tool turn needs matching native 
   }
 });
 test('OFFLINE disclosure oracle: aborted turns require actual policy, terminal request, cleanup and settled audit entries', t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const requests = new RequestStore(store), request = requests.accept(normalize(fixture('work'), f.c, 'local:codex')).request, id = request.request_id;
   const policy = { kind: 'policy', role: 'bridge', controllerId: 'controller', requestId: id, threadId: 'thread', turnId: 'turn', valid: true,
     evidence: { threadId: 'thread', turnId: 'turn', toolNames: ['route_delegate'], toolSchemasSha256: 'a'.repeat(64), dynamicToolsOnly: true, nativeAutoCompaction: 'disabled' } };

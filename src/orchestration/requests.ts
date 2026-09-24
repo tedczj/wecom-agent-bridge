@@ -28,10 +28,7 @@ export class RequestStore {
       const scope = conversationScope(incoming.route), digest = sha256(JSON.stringify([incoming.route, incoming.text, incoming.media]));
       const old = this.store.db.prepare('SELECT * FROM orchestration_requests WHERE channel_id=? AND message_id=?').get(incoming.route.channelId, incoming.messageId) as OriginalRequest | undefined;
       if (old) {
-        // Legacy dedup keeps its original hash semantics; never bless old normalized text as raw.
-        const text = old.hash_version === 'legacy-v3' ? incoming.text.trim() || (incoming.media.length ? '请分析这张图片' : incoming.text) : incoming.text;
-        const expected = sha256(JSON.stringify([incoming.route, text, incoming.media]));
-        invariant(old.request_hash === expected && old.conversation_scope === scope, 'REQUEST_ID_CONFLICT');
+        invariant(old.hash_version === 'raw-v4' && old.request_hash === digest && old.conversation_scope === scope, 'REQUEST_ID_CONFLICT');
         return { request: old, duplicate: true };
       }
       const id = randomUUID(), now = Date.now();

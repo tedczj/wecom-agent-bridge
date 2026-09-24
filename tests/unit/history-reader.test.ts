@@ -9,7 +9,7 @@ import { NativeReader } from '../../src/history/reader.ts';
 import { ResumeVerifier } from '../../src/history/verifier.ts';
 import { historyRevision, type CandidateMetadata } from '../../src/history/catalog.ts';
 import { NativeCatalog } from '../../src/history/catalog.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import type { Target } from '../../src/routing/catalog.ts';
 
 const line = (value: unknown) => JSON.stringify(value) + '\n';
@@ -79,7 +79,7 @@ test('OFFLINE M5: cursor and pre-dispatch revision/profile checks reject changed
   await assert.rejects(reader.readWindow(h.target, h.candidate, page.nextCursor), /HISTORY_CURSOR/);
 });
 test('OFFLINE M5: Pi header/branch reading does not convert assistant timestamps into agent_settled evidence', async t => {
-  const f = setup(t, 'pi'), store = f.store(); migrateV4(store);
+  const f = setup(t, 'pi'), store = f.store(); initializeHierarchy(store);
   const id = randomUUID(), file = path.join(f.c.agent.sessionRoot, id + '.jsonl');
   writeFileSync(file, line({ type: 'session', version: 3, id, cwd: f.workspace, timestamp: new Date().toISOString() }) +
     line({ id: 'user', parentId: null, type: 'message', message: { role: 'user', content: [{ type: 'text', text: 'question' }] } }) +

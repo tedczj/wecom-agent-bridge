@@ -6,7 +6,7 @@ import { setup, fixture } from '../helpers.ts';
 import { parseConfig } from '../../src/config.ts';
 import { normalize } from '../../src/local.ts';
 import { Store } from '../../src/store.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
 import { Directories } from '../../src/orchestration/directories.ts';
 
@@ -14,7 +14,7 @@ function harness(t: Parameters<typeof setup>[0]) {
   const f = setup(t), outside = path.join(f.root, 'outside'); mkdirSync(outside);
   const c = parseConfig({ ...f.c, routing: { roots: [{ id: 'root', path: f.workspace, profile: 'read' }],
     profiles: [{ id: 'read', version: '1' }], workspaces: [{ id: 'test', path: f.workspace, profile: 'read', aliases: ['configured'] }] } });
-  const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c); migrateV4(store); f.cleanups.push(() => store.close());
+  const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c); initializeHierarchy(store); f.cleanups.push(() => store.close());
   const requests = new RequestStore(store), directories = new Directories(c, store);
   const request = (text: string, conversation = 'default') => requests.accept(normalize(fixture(text, conversation), c, 'local:codex')).request;
   const propose = () => {

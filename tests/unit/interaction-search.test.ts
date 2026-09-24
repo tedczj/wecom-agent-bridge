@@ -4,13 +4,13 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setup, fixture } from '../helpers.ts';
 import { normalize } from '../../src/local.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { RequestStore, sha256 } from '../../src/orchestration/requests.ts';
 import { ArtifactStore } from '../../src/answers/artifact-store.ts';
 import { listInteractions } from '../../src/answers/projection.ts';
 
 function searchFixture(t: Parameters<typeof setup>[0]) {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const requests = new RequestStore(store), artifacts = new ArtifactStore(store, path.join(f.c.stateRoot, 'artifacts'));
   return { store, async add(query: string, short: string, directory = 'A', session = 'one') {
     const request = requests.accept(normalize({ ...fixture(query), session }, f.c, 'local:codex')).request;
@@ -63,7 +63,7 @@ test('OFFLINE interaction search: an existing v4 database gets an idempotent der
     f.store.db.exec('DROP TRIGGER ' + trigger.name);
   f.store.db.exec('DROP TABLE interaction_search; DROP VIEW interaction_search_projection;');
   const coreBefore = f.store.db.prepare('SELECT * FROM orchestration_requests').all();
-  migrateV4(f.store); migrateV4(f.store);
+  initializeHierarchy(f.store); initializeHierarchy(f.store);
   assert.deepEqual(f.store.db.prepare('SELECT * FROM orchestration_requests').all(), coreBefore);
   assert.equal(f.store.db.prepare('SELECT count(*) n FROM interaction_search').get()!.n, 1);
   assert.equal(listInteractions(f.store, row.request.conversation_scope, { searchQuery: 'backfill recap' })[0]!.requestId, row.request.request_id);

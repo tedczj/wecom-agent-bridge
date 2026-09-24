@@ -6,10 +6,8 @@ import { CodexAppServer } from '../../src/controllers/codex-app-server.ts';
 import { ArtifactStore } from '../../src/answers/artifact-store.ts';
 import { sha256 } from '../../src/orchestration/requests.ts';
 import { liveFixture } from './fixture.ts';
-import { nativeContextAudit } from './native-context.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -31,7 +29,7 @@ export async function runDeliveryCase(base: Config, test: LiveCase, attempt: num
   const observations: Record<string, { pass: boolean; actual: unknown }> = {};
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    const before = fixture.gitState(), accepted = await service.accept({ id: randomUUID(), session: 'fixture', text: test.steps[0]!.detail, images: [] });
+    const accepted = await service.accept({ id: randomUUID(), session: 'fixture', text: test.steps[0]!.detail, images: [] });
     invariant(accepted.taskId && !accepted.rejected, 'LIVE_REQUEST_REJECTED'); taskId = accepted.taskId; await service.settle();
     const job = service.store.get(taskId); invariant(job.kind === 'agent' && job.status === 'succeeded', 'LIVE_BUSINESS_NOT_COMPLETED');
     const row = service.store.db.prepare("SELECT answer_id FROM answer_artifacts WHERE job_task_id=? AND kind='final' AND state='ready'").get(taskId)!;
@@ -43,11 +41,8 @@ export async function runDeliveryCase(base: Config, test: LiveCase, attempt: num
       { transport: 'LocalChannel Writable fault injection; not Weixin', received, outbox: initial, channelReady: service.channel.ready });
     invariant(injected && initial.length === 1 && initial[0]!.state === 'unknown', 'LIVE_FAULT_NOT_EFFECTIVE');
     const disclosure = bridgeDisclosure(service.store, [taskId]), replay = replayEvidence(service.store, [taskId]);
-    const native = await nativeContextAudit(service.store, fixture.c, job, 'unused-delivery-audit-marker');
-    const remote = remoteWriteEvidence(service.store, [taskId], [native], before, fixture.gitState());
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     const source = service.store.db.prepare('SELECT raw_query_sha256 FROM orchestration_requests WHERE request_id=?').get(taskId)!.raw_query_sha256;
     const wires = ['business-wire:', 'controller-wire:bridge:', 'controller-wire:route:'].map(prefix => service.store.value<{ textSha256: string }>(prefix + taskId));
     observe('rawQueryMatchesSourceRequest', wires.every(w => w?.textSha256 === source), { source, wires });

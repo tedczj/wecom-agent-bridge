@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { setup } from '../helpers.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { ControllerRegistry } from '../../src/orchestration/registry.ts';
 import { auditTools, type ToolAuditRecord } from '../../src/orchestration/audit.ts';
 import { sha256 } from '../../src/orchestration/requests.ts';
 
 test('OFFLINE audit: concurrent callbacks retain invocation order and hashes without bodies', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   const actor = new ControllerRegistry(store, () => {}).prepare('scope', 'route', 'directory', 'digest');
   let release!: (value: unknown) => void;
   const pending = new Promise(resolve => { release = resolve; });
@@ -26,7 +26,7 @@ test('OFFLINE audit: concurrent callbacks retain invocation order and hashes wit
 });
 
 test('OFFLINE audit: Bridge envelopes reject raw fields and oversized Unicode projections', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   const actor = new ControllerRegistry(store, () => {}).prepare('scope', 'bridge', null, 'digest');
   for (const result of [{ shortText: 'ok', raw: 'private answer' }, { shortText: '😀😀😀' }, {}]) {
     const handler = auditTools(store, 'request', actor, 2, async () => result);
@@ -42,7 +42,7 @@ test('OFFLINE audit: Bridge envelopes reject raw fields and oversized Unicode pr
 });
 
 test('OFFLINE audit: exhausted budget rejects before effects and failures keep no error text', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   const actor = new ControllerRegistry(store, () => {}).prepare('scope', 'route', 'directory', 'digest');
   const handler = auditTools(store, 'request', actor, 1200, async () => { throw new Error('private error text'); });
   await assert.rejects(handler('business_execute', {}, 'failed'), /private error text/);
@@ -56,7 +56,7 @@ test('OFFLINE audit: exhausted budget rejects before effects and failures keep n
   assert.equal(calls, 0);
 });
 test('OFFLINE audit: Bridge and Route share the root budget, including pending calls; another root has its own budget', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   const registry = new ControllerRegistry(store, () => {}), bridge = registry.prepare('scope', 'bridge', null, 'digest'), route = registry.prepare('scope', 'route', 'directory', 'digest');
   let release!: () => void, effects = 0;
   const pending = new Promise<void>(resolve => { release = resolve; });
@@ -70,7 +70,7 @@ test('OFFLINE audit: Bridge and Route share the root budget, including pending c
   assert.equal(effects, 1); assert.equal(store.value<ToolAuditRecord[]>('tool-audit:root')!.length, 1);
 });
 test('OFFLINE audit: malformed reference and range values never become raw body metadata', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   const actor = new ControllerRegistry(store, () => {}).prepare('scope', 'route', 'directory', 'digest');
   const handler = auditTools(store, 'request', actor, 1200, async () => { throw Error('invalid arguments'); });
   await assert.rejects(handler('read_answer_range', { answerRef: 'PRIVATE_BODY'.repeat(1000), start: -1, limit: 1000000 }, 'call'));
@@ -79,7 +79,7 @@ test('OFFLINE audit: malformed reference and range values never become raw body 
   assert.equal(JSON.stringify(audit).includes('PRIVATE_BODY'), false);
 });
 test('OFFLINE audit: Bridge history projection rejects raw fields and records checked bounded responses', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   const actor = new ControllerRegistry(store, () => {}).prepare('scope', 'bridge', null, 'digest');
   await assert.rejects(auditTools(store, 'search-request', actor, 1200, async () => [{ shortText: 'safe', raw: 'private original' }])
     ('search_interactions', { query: 'word' }, 'search'), /BRIDGE_HISTORY_PROJECTION/);

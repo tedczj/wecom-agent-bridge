@@ -13,8 +13,6 @@ import { liveFixture } from './fixture.ts';
 import { historyMeter, directoryAnswerMatches } from './history-meter.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
-import { nativeContextAudit } from './native-context.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -26,7 +24,7 @@ export async function runInteractionCase(base: Config, test: LiveCase, attempt: 
   let failure: string | undefined, cleanupConfirmed = false;
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    const before = fixture.gitState(), configDigest = await controllerConfigurationDigest(c.orchestration!.controllerRuntime.home, c.models![c.orchestration!.bridge.modelProfile]!);
+    const configDigest = await controllerConfigurationDigest(c.orchestration!.controllerRuntime.home, c.models![c.orchestration!.bridge.modelProfile]!);
     const artifacts = new ArtifactStore(service.store, c.orchestration!.answers.root), requests = new RequestStore(service.store);
     let liveScope = '', directoryA = '';
     for (let n = 1; n <= 31; n++) {
@@ -95,12 +93,9 @@ export async function runInteractionCase(base: Config, test: LiveCase, attempt: 
     observe('rawQueryMatchesSourceRequest', wires.every(w => w.bridge?.textSha256 === w.source && (w.kind === 'agent' ? w.business?.textSha256 === w.source && w.route?.textSha256 === w.source : !w.business && (!w.route || w.route.textSha256 === w.source))), wires);
     observe('permissionScopeValid', workJobs.every(job => ['term4u', 'doc-ocr-service'].includes(JSON.parse(job.input_json).workspaceId)) && c.codex.sandbox === 'read-only' && !c.codex.networkAccess,
       { sandbox: c.codex.sandbox, networkAccess: c.codex.networkAccess, basis: 'host fixture profile, not OS isolation' });
-    const disclosure = bridgeDisclosure(service.store, allIds), replay = replayEvidence(service.store, setupIds), native = [];
-    for (const job of new Map(workJobs.map(job => [job.session_key, job])).values()) native.push(await nativeContextAudit(service.store, c, job, canary));
-    const remote = remoteWriteEvidence(service.store, allIds, native, before, fixture.gitState());
+    const disclosure = bridgeDisclosure(service.store, allIds), replay = replayEvidence(service.store, setupIds);
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('interaction-page.json', pages[0]); fixture.save('directory-page.json', pages[1]);
     fixture.save('pagination-cursors.json', { beforeSeq: oldest, nextPageIds: next.map(e => e.requestId) });
     fixture.save('scope-negative-check.json', observations.readScope);
@@ -109,7 +104,6 @@ export async function runInteractionCase(base: Config, test: LiveCase, attempt: 
       recapEvents: service.store.db.prepare(`SELECT r.source,r.state,count(*) count FROM answer_recaps r JOIN answer_artifacts a ON a.answer_id=r.answer_id
         JOIN orchestration_requests q ON q.request_id=a.request_id WHERE q.conversation_scope=? GROUP BY r.source,r.state`).all(liveScope),
       negativeFixture: 'synthetic host record; excluded from live invocation counts' });
-    fixture.save('remote-write-audit.json', remote);
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally {
     try { await fixture.close(); cleanupConfirmed = true; } catch (error) { failure = errorCode(error, 'LIVE_CLEANUP_FAILED'); }

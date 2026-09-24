@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { statSync, writeFileSync, symlinkSync, unlinkSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import { setup, fixture } from '../helpers.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { RequestStore, conversationScope, sha256 } from '../../src/orchestration/requests.ts';
 import { ArtifactStore } from '../../src/answers/artifact-store.ts';
 import { normalize } from '../../src/local.ts';
@@ -15,7 +15,7 @@ import { recordFailureNotice } from '../../src/answers/failure-notice.ts';
 
 const finish: FinishEvidence = { backend: 'codex', threadStarted: true, turnStarted: true, turnCompleted: true, exitCode: 0, cleanupConfirmed: true };
 function answerFixture(f: ReturnType<typeof setup>, max = 16777216) {
-  const store = f.store(); migrateV4(store);
+  const store = f.store(); initializeHierarchy(store);
   const incoming = normalize(fixture(), f.c, 'local:codex'), scope = conversationScope(incoming.route);
   const requests = new RequestStore(store), request = requests.accept(incoming).request;
   requests.transition(request.request_id, scope, ['accepted'], 'bridge_planning');

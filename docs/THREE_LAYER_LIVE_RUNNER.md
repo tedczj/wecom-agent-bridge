@@ -1,5 +1,7 @@
 # Live runner 状态
 
+2026-09-24 清理：已移除 JS／Shell／Python 解析、命令/patch 副作用推断及整套远端写入补审工具。保留场景直接断言、原生输入/完成/输出哈希、证据导出和报告校验。`noProductionRemoteWrites` 仍保留在设计断言中，当前没有自动 oracle，按缺证据返回 BLOCKED；不能用 Git 快照或配置替代全局证明。数据迁移实现和 LIVE-24 adapter 也已移除，LIVE-24 保留设计编号并返回 `DATA_MIGRATION_REMOVED`。本次只运行离线检查，不运行 live LLM。下文既有 live 结果只对应历史候选。
+
 `npm run test:live` 已提供参数校验、完整用例目录、M0 前置检查和逐断言报告。LIVE-01/02/03/04/10/22/29 已接入独立只读 fixture、生产 `openService` 和部分硬断言；LIVE-11 已接入临时项目写入与重复委托测试；LIVE-25 接入媒体准备乱序/FIFO/状态响应，LIVE-16 接入真实长任务取消，LIVE-21 接入同目录的两个可信本地会话隔离；LIVE-30 已接入真实 31 轮交互准备与历史查询；LIVE-14 已接入隔离 native 历史损坏及拒绝恢复；LIVE-19 已接入 LocalChannel ACK 丢失与服务重启；LIVE-18 已接入 Recap 服务故障和真实独立重试。**其余场景 adapter 和部分 predicate oracle 尚未完成，不能将此入口称为完整 live 验收。**
 
 ```bash
@@ -31,8 +33,6 @@ LIVE-03/04 已增加受控原生记录检查：精确定位本对话业务线程
 首轮真实三层执行 `compat-live/1c7655d1-56da-4e20-ab42-f127401c0dab` 为 FAIL，暴露 exec 重连诊断被误判为终态错误的问题。新适配器的独立真实探针通过后，使用新 fixture 执行 `compat-live/8b4531e1-27ee-481f-a230-4c3434948299`，该轮也已结束；旧中断工作区不复用。LIVE-01 三次各有 7 个断言通过，但仍有 3 个全局 oracle 未实现，所以 case 仍为 BLOCKED，不能算完整 PASS。LIVE-02 的空管理 final、模型缓存和组合意图问题已修复；新轮次三次核心断言均通过，但该轮全局证据仍不完整。
 
 真实 `gpt-6-sol / medium` 的有限能力探测结果见 [实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。它们不能替代本目录定义的完整三层 live 用例。
-
-远端写入 oracle 当前自动覆盖无业务工具执行及具备完整策略/提示哈希的纯管理查询场景：业务请求要求完整 native 记录无工具/未知项/继承压缩，输入 hash 必须属于该 job 绑定的 native ID；纯管理查询不能伪造业务提交，必须有实际管理策略和原文 wire hash。两者均核对所有被调用管理角色的受限策略及逐返回 wire hash、无摘要模型调用或全部摘要调用具备完整无工具策略/完成/清理证明、完整 jobs 集合和无 remote 的 fixture Git 前后状态。普通 slash 控制命令不在本 oracle 的支持范围内。仅允许一个额外的工具调用子集：严格 AST 识别的 `ALL_TOOLS.filter` 正则元信息筛选加 `text` 输出，且原生 call/output ID 在同一 turn 配对。该类记录保持 `noToolExecution=false`，另记 `metadataOnlyRecords` / `noRemoteActions`；任何命令执行、其他调用、未知记录、缺失调用级证明的 LLM recap 或缺证据时为 `REMOTE_WRITE_AUDIT_INCOMPLETE`，不能仅凭 cwd 或网络配置判 PASS。LIVE-29 的短答历史投影直接读取生产 `listInteractions` 对真实完成答案的输出，不声称额外调用了管理模型。
 
 LIVE-22 生成固定像素的红圆/蓝方块 PNG，首轮附图、第二轮不附图；核对三层 wire 的图片 hash、原文、native session 和视觉回答。原生图片输入会含包装文字，审计分别保存 text part 与 inline image 的 SHA，不把包装文字当用户原文；外部图片 URL 不被读取或记录。只自动接受明确的颜色/形状描述，其他回答仍需独立语义判定。
 
@@ -88,12 +88,10 @@ LIVE-07/09 共用 long-answer-case：业务工具输出需提供报告校验段�
 
 额外 search-live 三次真实管理模型搜索均 PASS，证据 `search-live/7b29a9fc-fd0c-4581-bfcb-85c04e3a1bd0`；合成 system 历史包含同目录、另一目录、另一 scope 和仅原件含词的负例，实际搜索/回答及零业务执行均核对。该额外检查不改冻结 LIVE-ID 矩阵。
 
-LIVE-24 用真实 CLI 建立 v3 业务 native ref，再运行实际 SQLite backup、dry-run 和 apply；保存核心行集校验和及快照 SHA。健康分支准确续接，另一分支用明示合成 v3 interrupted 状态验证新建不能绕过 blocked。迁移前后调用计数、原 ID/clock/dedup/unknown outbox/合成游标及旧裁剪标记分别核对。只验证 LocalChannel 和合成状态，不声明真实微信游标迁移或真实崩溃复现。`migration-live/650eb070-d1a6-42cd-b164-c7ebd26dcdb9` 三轮核心及已有全局断言 PASS，均只剩远端写入审计 BLOCKED。
+历史 LIVE-24（实现现已移除）曾用真实 CLI 建立 v3 业务 native ref，再运行实际 SQLite backup、dry-run 和 apply；保存核心行集校验和及快照 SHA。健康分支准确续接，另一分支用明示合成 v3 interrupted 状态验证新建不能绕过 blocked。迁移前后调用计数、原 ID/clock/dedup/unknown outbox/合成游标及旧裁剪标记分别核对。只验证 LocalChannel 和合成状态，不声明真实微信游标迁移或真实崩溃复现。`migration-live/650eb070-d1a6-42cd-b164-c7ebd26dcdb9` 三轮核心及已有全局断言 PASS，均只剩远端写入审计 BLOCKED。
 
 LIVE-17 必须 --allow-fixture-writes：fork 真实 Bridge 主进程，配置只经 IPC；实际业务写入由固定脚本生成的开始标记且宿主已记录 prompt 准入后，对 Bridge 主进程发 SIGKILL。runner 另行释放受控脚本并检查已记录的 PID/进程组退出，不能把这一步说成产品自动停止了所有子进程。随后正常 openService 对死亡资源归档和任务对账；不调用 review、不授权重放，检查原 native ref、uncertain effect、blocked 及一次提交。`crash-live/8cfe67b9-dc59-405a-9784-852c0e7f0dcf` 三轮四个核心断言通过，原文/权限/不重放断言通过，已记录进程清理确认；原报告崩溃披露与远端写入审计缺失，整体 BLOCKED。随后依据已保存的进程归档、kill-boundary、原 native 策略和未发送回调进行只读独立重算，三轮披露 PASS，仅远端写入仍 BLOCKED；不伪造回合完成，也不修改原数据库/报告。
 
 LIVE-08 的业务测试退出证据来自原生 CommandExecution，要求实际固定测试命令、fixture cwd、完成状态/exit0和测试 callback 输出标记同时匹配；脚本/package hash及 Git HEAD/status必须未变。语义初筛保留约束、未完成事项、有序选项及待答问题；词法匹配本身不代替运行事实或完整语义复核。`recap-semantics-live/5cbc7178-7658-4b65-8674-9e95f8eda1d2` 三轮核心通过，仅远端写入审计 BLOCKED；逐轮另有 Codex 语义复核及源 hash，非独立人工验收。
 
 LIVE-28 的 unique/ambiguous 分支分别建立完整独立 fixture。歧义分支两个目录均有真实业务未提交改动，以真实用户层说明建立双候选上下文，然后发送冻结的省略目录工作句；必须先出现宿主持久化澄清且零业务提交，再发送冻结选择回复并重复相同消息 ID。原业务文本必须精确等于省略目录工作句，不能使用选择回复或拼接文本。两分支都要求实际 A 提交并推送到本地 bare、B 不变。`elliptical-live/cc622b2d-68f0-47d2-8fc0-acb276e28c72` 三轮两子场景核心通过，仅远端写入审计 BLOCKED。
-
-远端写入审计支持有限原生命令和 add-file patch：闭合 JS/shell 语法、每轮 native 权限策略、命令/cwd/终态 mirror 和 call/output 都需匹配；未知程序和语法仍 BLOCKED。Git 还必须通过实际有效配置、物理 fixture/local bare、前后快照检查，patch 必须匹配最终文件哈希；宿主控制命令必须无模型调用并有 system 完成原件。命令执行与 noToolExecution 分开统计，非零退出不算执行成功。LIVE-13 的旧三轮独立重算全部 PASS，原报告保留；LIVE-06/28 adapter 现接完整前后快照及上述审计，新批次运行结果以实现状态为准。该审计不覆盖任意 shell 或全系统副作用。

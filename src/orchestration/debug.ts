@@ -17,7 +17,6 @@ export function orchestrationDebug(store: Store, scope: string, currentRequestId
     return { requestId: id, sourceRequestId: row.source_request_id, phase: row.phase, failureCode: row.failure_code,
       receivedAt: row.received_at, updatedAt: row.updated_at,
       job: row.kind ? { kind: row.kind, status: row.status, code: row.error_code, startedAt: row.started_at, finishedAt: row.finished_at } : null,
-      legacyResult: store.value('legacy-result:' + id) ?? null,
       execution: input?.routing ? { workspace: input.workspaceId, profileDigest: input.routing.digest, model: input.routing.execution,
         modelSources: input.routing.modelSources, selection: input.routing.reason } : null,
       effects: store.db.prepare('SELECT stage,effect_key,state,updated_at FROM controller_effects WHERE request_id=? ORDER BY stage,effect_key').all(id),

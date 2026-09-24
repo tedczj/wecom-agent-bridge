@@ -13,8 +13,6 @@ import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
-import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 
 export async function runGitFollowupCase(base: Config, test: LiveCase, attempt: number, globals: string[], output: string, variant?: 'unique' | 'ambiguous'): Promise<CaseResult> {
   invariant(test.id === 'LIVE-06' || test.id === 'LIVE-28', 'LIVE_SCENARIO_UNSUPPORTED');
@@ -138,12 +136,6 @@ export async function runGitFollowupCase(base: Config, test: LiveCase, attempt: 
     const disclosure = bridgeDisclosure(service.store, ids), replay = replayEvidence(service.store, [...setupIds, work.task_id]);
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    const requestIds = (service.store.db.prepare('SELECT request_id FROM orchestration_requests ORDER BY ingress_seq').all() as { request_id: string }[]).map(row => row.request_id);
-    const sessions = new Map(requestIds.map(id => service.store.get(id)).filter(job => job.kind === 'agent').map(job => [job.session_key, job]));
-    const native = await Promise.all([...sessions.values()].map(job => nativeContextAudit(service.store, c, job, 'unused-remote-audit-marker')));
-    const remoteAudit = remoteWriteEvidence(service.store, requestIds, native, gitBefore, fixture.gitState());
-    fixture.save('remote-write-audit.json', remoteAudit);
-    if (remoteAudit.complete) observe('noProductionRemoteWrites', remoteAudit.pass, remoteAudit.actual);
     fixture.save('read-vs-execute-events.json', observations.noTargetMutationOnRead); fixture.save('native-session-ids.json', observations.selectedNativeSession);
     fixture.save('git-log.json', observations.gitFacts); fixture.save('local-remote-ref.json', { head, branch, remoteHead, remote }); fixture.save('B-before-after.json', observations.foreignDirectoryUnchanged);
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }

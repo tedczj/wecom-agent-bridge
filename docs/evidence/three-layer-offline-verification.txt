@@ -1,20 +1,26 @@
-Three-layer implementation stage: offline pre-commit verification
+Bridge parser-audit and data-migration cleanup: offline verification
 Date: 2026-09-24
 Node: 24.15.0
 npm: 11.12.1
 Branch: dev
 
-npm ci: exit 0; lockfile installation, 18 audited packages.
-Warnings: 1 high dependency vulnerability; mvdan-sh 0.10.1 deprecated.
-No automatic dependency upgrade or audit fix was applied.
+npm ci --no-audit --no-fund: exit 0; lockfile installation, 16 packages.
+Removed mvdan-sh; no dependency upgrades or npm audit were run.
+Removed JS/Shell/Python effect parsers, remote-write audit chain and dedicated tests.
+Removed data migration CLI, import/backup helpers, v2 upgrade and migration adapter/tests.
+Preserved empty-state schema initialization and existing v3/v4 mode checks.
 
-Initial npm run check: exit 2, TS2305 in new migration baseline test.
-Fixed the test to use the same SQLite backup typing compatibility as production migration.
-Final npm run check: exit 0.
-Tests: 422; passed: 422; failed: 0; cancelled: 0; skipped: 0; todo: 0.
+Initial parser cleanup check: exit 2, leftover scope evidence reference; fixed.
+Parser cleanup npm run check: exit 0; 393/393 tests passed.
+Final combined npm run check: exit 0.
+Tests: 392; passed: 392; failed: 0; cancelled: 0; skipped: 0; todo: 0.
+New checks cover empty-state initialization, refusing populated state unchanged,
+and rejecting v1/v2 without upgrading or modifying rows.
+git diff --check: exit 0.
 
-These are offline checks, including protocol doubles and synthetic fixtures.
-They do not prove live Agent behavior, Weixin delivery, or OS isolation.
-Live acceptance remains incomplete; see THREE_LAYER_IMPLEMENTATION_STATUS.md.
-Real 1M/80% tests are deferred by the operator; phone tests are not run.
+All checks are offline, with doubles and synthetic fixtures.
+No live LLM test or Weixin message test was run.
+Original 58 acceptance IDs and frozen design case IDs are retained.
+LIVE-24 reports DATA_MIGRATION_REMOVED; unobserved global predicates stay BLOCKED.
+Historical live evidence is candidate-specific, not acceptance of this cleanup.
 Raw logs, credentials, runtime state, images and model output are excluded.

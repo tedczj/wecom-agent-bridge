@@ -23,7 +23,6 @@
     "smoke:authorization": "npm run build --silent && node dist/scripts/smoke-authorization.js",
     "smoke:maintenance": "npm run build --silent && node dist/scripts/smoke-maintenance.js",
     "probe:controller": "npm run build --silent && node dist/scripts/probe-controller.js",
-    "migrate:hierarchical": "npm run build --silent && node dist/scripts/migrate-hierarchical.js",
     "test:live": "npm run build --silent && node dist/scripts/live-orchestration.js"
   },
   "dependencies": {
@@ -33,7 +32,6 @@
   "devDependencies": {
     "@types/node": "22.15.33",
     "@types/qrcode-terminal": "0.12.2",
-    "mvdan-sh": "0.10.1",
     "typescript": "5.8.3"
   }
 }

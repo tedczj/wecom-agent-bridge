@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (
  session_key TEXT PRIMARY KEY, base_key TEXT NOT NULL, generation INTEGER NOT NULL,
  backend TEXT NOT NULL, workspace_id TEXT NOT NULL, actor_id TEXT NOT NULL, agent_ref_json TEXT,
- state TEXT NOT NULL CHECK(state IN ('new','ready','tainted')), created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+ state TEXT NOT NULL CHECK(state IN ('new','ready','tainted')), last_response_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
  UNIQUE(base_key,generation));
 CREATE TABLE IF NOT EXISTS jobs (
  seq INTEGER PRIMARY KEY AUTOINCREMENT, task_id TEXT NOT NULL UNIQUE, channel_id TEXT NOT NULL, message_id TEXT NOT NULL,
@@ -39,28 +39,25 @@ export interface Selection {
 }
 export class Store {
   readonly db: DatabaseSync; private depth = 0;
-  constructor(file: string, private c: Config, readOnly: boolean | 'maintenance' = false) {
-    if (readOnly === 'maintenance') invariant(file !== ':memory:' && existsSync(file), 'STATE_NOT_INITIALIZED');
+  constructor(file: string, private c: Config, readOnly = false) {
     if (file !== ':memory:') for (const name of [file, file + '-wal', file + '-shm']) if (existsSync(name)) invariant(!lstatSync(name).isSymbolicLink(), 'UNSAFE_DB_PATH');
     this.db = new DatabaseSync(file, { readOnly: readOnly === true });
     try {
       const version = (this.db.prepare('PRAGMA user_version').get() as {user_version: number}).user_version;
       // No implicit migration/replay of historical network-origin tasks. Keep the old database untouched.
-      invariant(version === 0 || version === 2 || version === 3 || version === 4, version === 1 ? 'LEGACY_STATE_REQUIRES_NEW_ROOT' : 'SCHEMA_TOO_NEW');
+      invariant(version === 0 || version === 3 || version === 4, version === 1 || version === 2 ? 'LEGACY_STATE_REQUIRES_NEW_ROOT' : 'SCHEMA_TOO_NEW');
       invariant(version !== 4 || readOnly === true || c.orchestration, 'V4_REQUIRES_HIERARCHICAL');
       this.db.exec('PRAGMA busy_timeout=5000;');
       if (readOnly) {
-        invariant(version === 2 || version === 3 || version === 4, 'STATE_NOT_INITIALIZED');
+        invariant(version === 3 || version === 4, 'STATE_NOT_INITIALIZED');
         const identity = this.db.prepare("SELECT value FROM metadata WHERE key='identity'").get() as {value: string} | undefined;
         invariant(identity?.value === JSON.stringify([c.workspace.id, c.workspace.path, c.local.actorId]), 'STATE_IDENTITY_MISMATCH');
-        if (readOnly === 'maintenance') this.db.exec('PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;');
         return;
       }
       this.db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
       const identity = JSON.stringify([c.workspace.id, c.workspace.path, c.local.actorId]);
       this.atomic(() => {
         this.db.exec(schema);
-        if (!(this.db.prepare('PRAGMA table_info(sessions)').all() as {name:string}[]).some(x => x.name === 'last_response_at')) this.db.exec('ALTER TABLE sessions ADD COLUMN last_response_at INTEGER;');
         this.db.exec('CREATE TABLE IF NOT EXISTS routing_state (key TEXT PRIMARY KEY,value TEXT NOT NULL);');
         const old = this.db.prepare("SELECT value FROM metadata WHERE key='identity'").get() as {value: string} | undefined;
         invariant(!old || old.value === identity, 'STATE_IDENTITY_MISMATCH');

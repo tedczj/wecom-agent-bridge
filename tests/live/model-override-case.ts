@@ -13,7 +13,6 @@ import { liveFixture } from './fixture.ts';
 import { nativeContextAudit, type NativeInputAudit } from './native-context.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -37,7 +36,7 @@ export async function runModelOverrideCase(base: Config, test: LiveCase, attempt
   let failure: string | undefined, cleanupConfirmed = false;
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    const before = fixture.gitState(), ids: string[] = [], actualQueries: string[] = [];
+    const ids: string[] = [], actualQueries: string[] = [];
     for (const step of test.steps) {
       const query = step.detail.replaceAll('${alternateLabel}', `${alternate[0]}（${alternate[1].model} / ${alternate[1].reasoning}）`); actualQueries.push(query);
       const accepted = await service.accept({ id: randomUUID(), session: 'fixture', text: query, images: [] });
@@ -69,13 +68,12 @@ export async function runModelOverrideCase(base: Config, test: LiveCase, attempt
     observe('rawQueryMatchesSourceRequest', wires.every(row => row.expected === row.source && row.values.every(value => value === row.source)), wires);
     observe('permissionScopeValid', c.codex.sandbox === 'read-only' && !c.codex.networkAccess && inputs.every(input => ['term4u', 'doc-ocr-service'].includes(input.workspaceId)),
       { sandbox: c.codex.sandbox, modelOverrideChangesPermissions: false, notOsIsolation: true });
-    const disclosure = bridgeDisclosure(service.store, ids), replay = replayEvidence(service.store, ids), remote = remoteWriteEvidence(service.store, ids, native, before, fixture.gitState());
+    const disclosure = bridgeDisclosure(service.store, ids), replay = replayEvidence(service.store, ids);
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('model-observations.json', { observed, controllers, nativeProfiles: native.map(row => row.runtimeProfile),
       alternateProofSha256: sha256(readFileSync(path.join(base.orchestration.controllerRuntime.workRoot, 'runtime-lock-' + modelDigest(alternate[1]) + '.json'))) });
-    fixture.save('profile-resolution.json', observations.profileDigestAndSource); fixture.save('native-turn-context.json', native); fixture.save('remote-write-audit.json', remote);
+    fixture.save('profile-resolution.json', observations.profileDigestAndSource); fixture.save('native-turn-context.json', native);
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally {
     try { await fixture.close(); cleanupConfirmed = true; } catch (error) { failure = errorCode(error, 'LIVE_CLEANUP_FAILED'); }

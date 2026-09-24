@@ -5,14 +5,12 @@ import path from 'node:path';
 import { setup, fixture, output } from '../helpers.ts';
 import { parseConfig } from '../../src/config.ts';
 import { normalize } from '../../src/local.ts';
-import { Store } from '../../src/store.ts';
 import { openService } from '../../src/main.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
-import { RequestStore, conversationScope, sha256 } from '../../src/orchestration/requests.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
+import { RequestStore, sha256 } from '../../src/orchestration/requests.ts';
 import { parseModels, parseOrchestration, selectModel } from '../../src/orchestration/config.ts';
 import { ControllerRegistry, type ControllerAuditEvent } from '../../src/orchestration/registry.ts';
 import { completedUsage, reached80 } from '../../src/controllers/rotation.ts';
-import { orchestrationDebug } from '../../src/orchestration/debug.ts';
 
 const example = () => JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
 function hierarchical(c: ReturnType<typeof setup>['c']) {
@@ -59,7 +57,7 @@ test('OFFLINE M1: no hierarchical request falls through to legacy execution', as
 });
 
 test('OFFLINE M1: decoded whitespace, CRLF, combining Unicode and image-only text are immutable', t => {
-  const f = setup(t), c = hierarchical(f.c), store = f.store(); migrateV4(store);
+  const f = setup(t), c = hierarchical(f.c), store = f.store(); initializeHierarchy(store);
   const requests = new RequestStore(store), raw = '  中文\r\ne\u0301 🧑🏽‍💻\n  ';
   const incoming = normalize(fixture(raw), c, 'local:codex');
   const accepted = requests.accept(incoming);
@@ -75,57 +73,6 @@ test('OFFLINE M1: decoded whitespace, CRLF, combining Unicode and image-only tex
   const image = normalize(fixture('', 'default', undefined, ['/tmp/image.png']), c, 'local:codex');
   assert.equal(image.text, '');
   assert.equal(requests.accept(image).request.raw_query, '');
-});
-
-test('OFFLINE M1: clipped legacy results are labeled without inventing original artifacts or exposing text in debug', t => {
-  const f = setup(t), store = f.store(), incoming = normalize(fixture('old command'), f.c, 'local:codex');
-  const job = store.reserve(incoming, 'command').job;
-  store.complete(job.task_id, 'succeeded', 'PRIVATE_LEGACY_RESULT'.repeat(Math.ceil(f.c.reply.maxResultBytes / 10)));
-  const before = store.get(job.task_id); assert.equal(before.error_code, 'OUTPUT_TRUNCATED');
-  migrateV4(store);
-  const expected = { completeness: 'legacy-truncated', retainedIn: 'jobs.result_text', originalArchived: false };
-  assert.deepEqual(store.value('legacy-result:' + job.task_id), expected);
-  assert.deepEqual(store.get(job.task_id), before);
-  assert.equal(store.db.prepare('SELECT count(*) n FROM answer_artifacts').get()!.n, 0);
-  const debug = orchestrationDebug(store, conversationScope(incoming.route), 'current', job.task_id) as { requests: Array<{ legacyResult: unknown }> };
-  assert.deepEqual(debug.requests[0]!.legacyResult, expected);
-  assert.equal(JSON.stringify(debug).includes('PRIVATE_LEGACY_RESULT'), false);
-  store.db.prepare('DELETE FROM routing_state WHERE key=?').run('legacy-result:' + job.task_id);
-  migrateV4(store); assert.deepEqual(store.value('legacy-result:' + job.task_id), expected);
-});
-test('OFFLINE M1: v3 migration preserves jobs, native refs and response clock', t => {
-  const f = setup(t), store = f.store();
-  const incoming = normalize(fixture('original'), f.c, 'local:codex');
-  const { job } = store.reserve(incoming, 'agent');
-  store.prepared(job.task_id, []); store.claim();
-  store.persistSession(job.session_key, { kind: 'codex', threadId: 'native-id' });
-  store.complete(job.task_id, 'succeeded', 'old result');
-  const session = store.session(job.session_key), before = store.get(job.task_id);
-  store.put('binding:' + session.base_key, session.session_key);
-  assert.throws(() => migrateV4(store), /MIGRATION_BINDING_REVIEW_REQUIRED/);
-  assert.equal((store.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 3);
-  const result = migrateV4(store, () => ({ conversationScope: conversationScope(incoming.route), directoryIdentity: 'canonical:inode', backendHomeKey: 'home-key', profileDigest: 'original-digest' }));
-  assert.deepEqual(result, { requests: 1, bindings: 1 });
-  assert.deepEqual(store.get(job.task_id), before);
-  assert.deepEqual(store.session(job.session_key), session);
-  assert.equal(store.value('binding:' + session.base_key), job.session_key);
-  assert.deepEqual(migrateV4(store), { requests: 0, bindings: 0 });
-  const requests = new RequestStore(store), legacy = requests.get(job.task_id, conversationScope(incoming.route));
-  assert.equal(legacy.hash_version, 'legacy-v3');
-  assert.equal(legacy.input_provenance, 'legacy-normalized');
-  assert.equal(requests.accept({ ...incoming, text: '  original  ' }).duplicate, true);
-  assert.equal(store.db.prepare('SELECT count(*) n FROM answer_artifacts').get()!.n, 0);
-  assert.deepEqual(store.value('legacy-result:' + job.task_id), { completeness: 'unknown', retainedIn: 'jobs.result_text', originalArchived: false });
-  assert.throws(() => new Store(path.join(f.c.stateRoot, 'bridge.sqlite'), f.c), /V4_REQUIRES_HIERARCHICAL/);
-  const reopened = new Store(path.join(f.c.stateRoot, 'bridge.sqlite'), hierarchical(f.c));
-  assert.equal(reopened.db.prepare('PRAGMA user_version').get()!.user_version, 4); reopened.close();
-});
-
-test('OFFLINE M1: pending or running work prevents migration without any v4 table writes', t => {
-  const f = setup(t), store = f.store();
-  store.reserve(normalize(fixture(), f.c, 'local:codex'), 'agent');
-  assert.throws(() => migrateV4(store), /MIGRATION_REQUIRES_DRAIN/);
-  assert.equal(store.db.prepare("SELECT name FROM sqlite_master WHERE name='orchestration_requests'").get(), undefined);
 });
 
 test('OFFLINE 80%: exact integer boundary, invalid usage and no cumulative/cache double counting', () => {
@@ -144,7 +91,7 @@ test('OFFLINE 80%: exact integer boundary, invalid usage and no cumulative/cache
 });
 
 test('OFFLINE M3: generation CAS, role registration, usage_unknown, late fencing and rotation telemetry', t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const audit: ControllerAuditEvent[] = [], registry = new ControllerRegistry(store, e => audit.push(e));
   const first = registry.prepare('scope', 'route', 'canonical:inode', 'profile');
   assert.throws(() => registry.prepare('scope', 'route', 'canonical:inode', 'profile'), /CONTROLLER_CREATION_BUSY/);
@@ -174,7 +121,7 @@ test('OFFLINE M3: generation CAS, role registration, usage_unknown, late fencing
 });
 
 test('OFFLINE M1: pure target clarification refers to one unexecuted source without rewriting it', t => {
-  const f = setup(t), store = f.store(); migrateV4(store); const requests = new RequestStore(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store); const requests = new RequestStore(store);
   const source = requests.accept(normalize(fixture('do the original work'), f.c, 'local:codex')).request;
   requests.transition(source.request_id, source.conversation_scope, ['accepted'], 'completed');
   store.db.prepare('UPDATE orchestration_requests SET route_snapshot_json=? WHERE request_id=?').run(JSON.stringify({ pendingSelection: true, expiresAt: Date.now() + 900000 }), source.request_id);

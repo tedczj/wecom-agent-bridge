@@ -1,5 +1,24 @@
-// Additive schema derived from design 1.0 schema-v4-reference.sql.
-export const schemaV4 = `
+import type { Store } from '../store.ts';
+import { invariant } from '../errors.ts';
+import { ensureInteractionSearch } from '../answers/search-index.ts';
+
+/** Create hierarchical tables only in empty state; populated v3 databases are not converted. */
+export function initializeHierarchy(store: Store): void {
+  store.atomic(() => {
+    const version = store.db.prepare('PRAGMA user_version').get()!.user_version;
+    if (version !== 4) {
+      invariant(version === 3 && !store.db.prepare('SELECT 1 FROM jobs LIMIT 1').get() &&
+        !store.db.prepare('SELECT 1 FROM sessions LIMIT 1').get() && !store.db.prepare('SELECT 1 FROM routing_state LIMIT 1').get(),
+        'HIERARCHICAL_REQUIRES_EMPTY_STATE');
+      store.db.exec(schemaV4);
+      store.db.exec('PRAGMA user_version=4;');
+    }
+    ensureInteractionSearch(store);
+  });
+}
+
+// Hierarchical schema derived from design 1.0 schema-v4-reference.sql.
+const schemaV4 = `
 CREATE TABLE IF NOT EXISTS orchestration_requests (
   ingress_seq INTEGER PRIMARY KEY AUTOINCREMENT,
   request_id TEXT NOT NULL UNIQUE,

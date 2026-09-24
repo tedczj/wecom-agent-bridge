@@ -23,7 +23,6 @@ import { runExternalCase } from '../tests/live/external-case.ts';
 import { runClockCase } from '../tests/live/clock-case.ts';
 import { runInjectionCase } from '../tests/live/injection-case.ts';
 import { runLongAnswerCase } from '../tests/live/long-answer-case.ts';
-import { runMigrationCase } from '../tests/live/migration-case.ts';
 import { runCrashCase } from '../tests/live/crash-case.ts';
 import { runRecapSemanticsCase } from '../tests/live/recap-semantics-case.ts';
 import { runModelOverrideCase } from '../tests/live/model-override-case.ts';
@@ -145,10 +144,7 @@ async function main(): Promise<void> {
       else try { result = await runCrashCase(c, test, attempt, spec.globalAssertions, directory); }
       catch (error) { result = blockedCase(test, attempt, spec.globalAssertions, errorCode(error, 'LIVE_FIXTURE_FAILED')); }
     }
-    else if (test.id === 'LIVE-24') {
-      try { result = await runMigrationCase(c, test, attempt, spec.globalAssertions, directory); }
-      catch (error) { result = blockedCase(test, attempt, spec.globalAssertions, errorCode(error, 'LIVE_FIXTURE_FAILED')); }
-    }
+    else if (test.id === 'LIVE-24') result = blockedCase(test, attempt, spec.globalAssertions, 'DATA_MIGRATION_REMOVED');
     else if (test.id === 'LIVE-23') {
       try { result = await runInjectionCase(c, test, attempt, spec.globalAssertions, directory); }
       catch (error) { result = blockedCase(test, attempt, spec.globalAssertions, errorCode(error, 'LIVE_FIXTURE_FAILED')); }

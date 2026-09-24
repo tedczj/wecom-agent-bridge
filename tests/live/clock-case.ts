@@ -12,8 +12,6 @@ import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
-import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 
 export async function runClockCase(base: Config, test: LiveCase, attempt: number, globals: string[], output: string): Promise<CaseResult> {
   invariant(test.id === 'LIVE-20', 'LIVE_SCENARIO_UNSUPPORTED');
@@ -23,7 +21,6 @@ export async function runClockCase(base: Config, test: LiveCase, attempt: number
       const evidence = path.join(output, variant); mkdirSync(evidence, { mode: 0o700 }); let injectedNow: number | undefined;
       const fixture = await liveFixture(base, evidence, 'read-only', { businessClock: () => injectedNow ?? Date.now() }), { service, c } = fixture;
       try {
-        const gitBefore = fixture.gitState();
         const setup = await service.accept({ id: randomUUID(), session: 'fixture', text: `在 term4u 记住本会话校验词 ${randomUUID()}。只回复“已记住”，不要使用工具或修改文件。`, images: [] });
         invariant(setup.taskId && !setup.rejected, 'LIVE_SETUP_REJECTED'); await service.settle();
         const original = service.store.get(setup.taskId); invariant(original.kind === 'agent' && original.status === 'succeeded', 'LIVE_SETUP_INCOMPLETE');
@@ -78,14 +75,10 @@ export async function runClockCase(base: Config, test: LiveCase, attempt: number
           bridge: service.store.value<{ textSha256: string }>('controller-wire:bridge:' + id)?.textSha256,
           business: service.store.value<{ textSha256: string }>('business-wire:' + id)?.textSha256, kind: service.store.get(id).kind }));
         const disclosure = bridgeDisclosure(service.store, queryIds), replay = replayEvidence(service.store, work.map(row => row.task_id as string));
-        const allIds = (service.store.db.prepare('SELECT request_id FROM orchestration_requests ORDER BY ingress_seq').all() as { request_id: string }[]).map(row => row.request_id);
-        const jobs = new Map(work.map(row => service.store.get(row.task_id as string)).map(job => [job.session_key, job]));
-        const native = await Promise.all([...jobs.values()].map(job => nativeContextAudit(service.store, c, job, 'unused-remote-audit-marker')));
-        const remote = remoteWriteEvidence(service.store, allIds, native, gitBefore, fixture.gitState()); fixture.save('remote-write-audit.json', remote);
         const facts = { variant, branchPass, clockInjected: true, usageInjected: false, rotationStateInjected: variant === 'management-only', real24hWait: false,
           beforeClock, injectedNow, beforeRefSha256: sha256(beforeRef), afterRefSha256: sha256(service.store.session(original.session_key).agent_ref_json!), samples, rotation, work,
           rawExact: raw.every(row => row.source === row.bridge && (row.kind === 'agent' ? row.source === row.business : row.business === undefined)), raw,
-          disclosure, replay, remote, permissionValid: c.codex.sandbox === 'read-only' && !c.codex.networkAccess };
+          disclosure, replay, permissionValid: c.codex.sandbox === 'read-only' && !c.codex.networkAccess };
         branches.push(facts); fixture.save('branch.json', facts);
       } finally { try { await fixture.close(); } catch (error) { cleanupConfirmed = false; failure = errorCode(error, 'LIVE_CLEANUP_FAILED'); } }
       if (!cleanupConfirmed) break;
@@ -102,8 +95,6 @@ export async function runClockCase(base: Config, test: LiveCase, attempt: number
     const disclosures = branches.map(b => b.disclosure as ReturnType<typeof bridgeDisclosure>), replays = branches.map(b => b.replay as ReturnType<typeof replayEvidence>);
     if (disclosures.every(d => d.complete)) observations.noBridgeRawAnswerDisclosure = { pass: disclosures.every(d => d.pass), actual: disclosures.map(d => d.actual) };
     if (replays.every(d => d.complete)) observations.noBusinessReplayAfterUncertain = { pass: replays.every(d => d.pass), actual: replays.map(d => d.actual) };
-    const remotes = branches.map(b => b.remote as ReturnType<typeof remoteWriteEvidence>);
-    if (remotes.every(remote => remote.complete)) observations.noProductionRemoteWrites = { pass: remotes.every(remote => remote.pass), actual: remotes.map(remote => remote.actual) };
   }
   for (const name of ['clock-seam.json', 'binding-before-after.json', 'last-response-times.json', 'observations.json'])
     writeFileSync(path.join(output, name), JSON.stringify(name === 'observations.json' ? observations : { branches, real24hWait: false, real80Verified: false }, null, 2), { mode: 0o600 });

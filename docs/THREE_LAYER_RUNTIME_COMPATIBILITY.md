@@ -49,4 +49,4 @@ Clippy 与格式化补充证据：`compat-clippy-fix-round2.txt`、`compat-clipp
 
 ModelProfile.contextWindowTokens 表示有效容量。原生 model_context_window 是总窗口；业务适配器现在从经原生 model/list 刷新的 metadata 读取有效比例和支持上限，用整数逆向换算。Sol/Luna 的当前95%及872000总上限得到828400有效容量；不硬编码该比例，不将配置数字冒充观测值。缺失/超限在业务 prompt 前拒绝，metadata阶段受取消和任务超时约束。短请求已验证正确有效容量，不构成1M/80%长测。
 
-原生默认workspace-write保护.git。为满足授权目录内commit/push，hierarchical写执行使用固定的宿主权限profile：全局project roots为read，仅目标cwd为write，目标物理.git为write，.codex/.agents为read，网络按host配置，approval_policy仍never。只对本目录非符号链接的.git目录给予例外，外置gitdir不扩权。原生sandbox局部探针已观察到.git/工作文件可写、邻接目录及保护目录写入EPERM；实际 git-scoped-live 三轮原工作区 commit/local bare push 核心断言通过；后续 git-audited-live 三轮已通过独立完整补审，详情见三层实现状态。该证据不构成完整 OS 隔离证明。
+原生默认workspace-write保护.git。为满足授权目录内commit/push，hierarchical写执行使用固定的宿主权限profile：全局project roots为read，仅目标cwd为write，目标物理.git为write，.codex/.agents为read，网络按host配置，approval_policy仍never。只对本目录非符号链接的.git目录给予例外，外置gitdir不扩权。原生sandbox局部探针已观察到.git/工作文件可写、邻接目录及保护目录写入EPERM；实际 git-scoped-live 三轮原工作区 commit/local bare push 核心断言通过；后续 git-audited-live 三轮曾通过当时工具的补审；该解析审计工具现已移除，历史结果仅对应原候选，详情见三层实现状态。该证据不构成完整 OS 隔离证明。

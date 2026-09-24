@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setup, fixture } from '../helpers.ts';
 import { normalize } from '../../src/local.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { parseModels, parseOrchestration } from '../../src/orchestration/config.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
 import { ControllerRegistry } from '../../src/orchestration/registry.ts';
@@ -22,7 +22,7 @@ import { NativeCatalog } from '../../src/history/catalog.ts';
 function configured(f: ReturnType<typeof setup>) {
   const example = JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
   f.c.orchestration = parseOrchestration(example.orchestration, parseModels(example.models));
-  const store = f.store(); migrateV4(store);
+  const store = f.store(); initializeHierarchy(store);
   const requests = new RequestStore(store), registry = new ControllerRegistry(store, () => {});
   const target: Target = { config: f.c, digest: 'profile', directory: { id: 'test', path: f.workspace, identity: 'inode', profile: 'read', aliases: [], description: '' } };
   let now = Date.now();

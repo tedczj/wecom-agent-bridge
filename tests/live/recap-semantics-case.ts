@@ -11,7 +11,6 @@ import { liveFixture } from './fixture.ts';
 import { nativeContextAudit } from './native-context.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { recapSemanticFacts } from './recap-semantics.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
@@ -55,14 +54,13 @@ test('fixture arithmetic',()=>{assert.equal(2+2,4);console.log(${JSON.stringify(
     const wires = ['controller-wire:bridge:', 'controller-wire:route:', 'business-wire:'].map(prefix => service.store.value<{ textSha256: string }>(prefix + id));
     observe('rawQueryMatchesSourceRequest', source === sha256(test.steps[0]!.detail) && wires.every(row => row?.textSha256 === source), { source, wires });
     observe('permissionScopeValid', c.codex.sandbox === 'read-only' && !c.codex.networkAccess && JSON.parse(job.input_json).workspaceId === 'term4u', { sandbox: c.codex.sandbox, basis: 'host fixture authorization, not OS isolation' });
-    const disclosure = bridgeDisclosure(service.store, [id]), replay = replayEvidence(service.store, [id]), remote = remoteWriteEvidence(service.store, [id], [native], before, after);
+    const disclosure = bridgeDisclosure(service.store, [id]), replay = replayEvidence(service.store, [id]);
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('business-test-exit.json', { actualTests, scriptSha256, packageSha256, native });
     writeFileSync(path.join(output, 'answer.md'), raw, { mode: 0o600 }); fixture.save('recap.json', { content, shortText: recap.short_text, sourceSha256: recap.source_sha256 });
     fixture.save('semantic-rubric.json', { facts, automatedRubric: 'conservative lexical/structured checks; runtime exit and Git facts independently required' });
-    fixture.save('git-before-after.json', { before, after }); fixture.save('remote-write-audit.json', remote);
+    fixture.save('git-before-after.json', { before, after });
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally { try { await fixture.close(); cleanupConfirmed = true; } catch (error) { failure = errorCode(error, 'LIVE_CLEANUP_FAILED'); } fixture.save('observations.json', observations); }
   const assertions: AssertionResult[] = [...test.assertions, ...globals.map(predicate => ({ id: test.id + '-GLOBAL-' + predicate, predicate, expected: 'true' }))].map(a => {

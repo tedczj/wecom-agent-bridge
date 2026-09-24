@@ -4,48 +4,52 @@
 
 ## 本次执行约定
 
-- 施工分支 `dev`。2026-09-24 按用户最新要求先提交并推送当前阶段，保留未通过和未执行项目。
-- 本次 live 目标按用户要求为 `gpt-6-sol / medium`，覆盖设计包示例中的 `high`；不自动换模型。
+- 施工分支 `dev`。本次删除过度扩展的解析审计工具，运行离线检查后 commit/push 并重启本地 bridge；不运行 live LLM。
+- 此前 live 目标按用户要求为 `gpt-6-sol / medium`，覆盖设计包示例中的 `high`；不自动换模型。
 - 用户于 2026-09-23 明确暂缓真实 1M/80% 长测，先埋点，运行一段时间后评估。因此 LIVE-26/27 是 **DEFERRED_BY_OPERATOR**，不是 PASS；窗口配置不会为方便测试而缩小。
 - 微信手机参与的 LIVE-W01/W02 留待自动测试完成之后，当前 **NOT_RUN**。
 - 管理 runtime 的 `gpt-6-sol / medium` usage 报告有效窗口 **828400**。普通 live 的私有配置已按此实测值设置；1M 示例与实测不符，未宣称 1M 能力，也未用缩小的测试窗口模拟跨 80%。
 
-## 本阶段提交状态（2026-09-24）
+## 本次清理（2026-09-24）
 
-本次提交包含已实现的三层编排、原件/摘要分离、历史查询、迁移、恢复、用量埋点和测试工具；不宣称整套 live 验收通过。当前没有后台 live 测试运行。
+已删除 JS／Shell／Python 解析器、命令/patch 副作用推断、fixture Git/脚本审计、Recap/迁移远端写入补审及专用单测，移除 `mvdan-sh` 依赖和 adapter 引用。保留设计要求的直接测试断言与证据导出；`noProductionRemoteWrites` 缺 oracle 时继续 BLOCKED，不因删除工具改成 PASS。同时删除数据迁移 CLI、备份/导入/绑定映射实现、专用测试及 v2 自动升级。建表定义移入 orchestration/schema.ts，仅初始化空库或打开已有 v4；非空 v3 原样拒绝。LIVE-24 保留编号并返回 DATA_MIGRATION_REMOVED。当前检查见 docs/verification.md。
+
+## 清理前阶段记录（2026-09-24，历史候选）
+
+此前提交包含已实现的三层编排、原件/摘要分离、历史查询、迁移、恢复、用量埋点和测试工具；不宣称整套 live 验收通过。当前没有后台 live 测试运行。
 
 - 提交前 npm ci 成功，npm run check 422/422 通过；详情见 docs/verification.md。
 - LIVE-01/02 最新各三轮在管理模型初始化阶段触发 CONTROLLER_TURN_TIMEOUT（90 秒），未进入业务执行；原因尚未确定。失败记录保留，未认定为环境故障。
 - LIVE-07 的历史概括误触发业务已修复：会话选项返回宿主 delegationIntent，Bridge/Route 明确归档答案查询规则。long-history-intent-live 三轮功能断言通过，scoped-effects-reevaluated-result-v6.json 三轮完整 PASS。
 - LIVE-08/11/18 的 v3 补审、LIVE-14 的 corruption-effects-reevaluated-result-v7.json、LIVE-25 的 scoped-effects-reevaluated-result-v8.json、LIVE-28 的 v5 补审各三轮 PASS；各自原报告、原数据和审计代码快照保留在私有 runtime 中。结果仅对应其记录的候选和证据。
-- LIVE-16/17 的远端写入审计尚未完成；LIVE-24 已加入迁移基线核对代码和离线测试，完整 live 审计尚未完成。未完成项不标 PASS。
+- 此前 LIVE-16/17/24 的完整远端写入审计未完成，未标 PASS；该补审工具现已移除。
 - LIVE-26/27（真实 1M/80%）按用户要求暂缓，日志埋点保留；LIVE-W01/W02 手机验收未运行。生产部署和生产迁移未切换。
 
-设计 live 文档第 17、23 行要求断言 oracle、证据导出，以及无生产远端写入等全局断言。JS/Shell/Python 的闭合语法解析是本实现选择的测试手段，设计没有强制要求这套解析工具；这些模块仅用于测试，不能作为生产后端或通用 OS 隔离证明。
+设计保留测试断言和证据要求；完整解析审计工具不是设计要求，已按用户要求删除。
 
 ## 当前模块与边界
 
 | 阶段 | 已加入工作树 | 尚未完成 |
 |---|---|---|
 | M0 | 独立兼容候选通过真实 6 Sol/medium create/resume、动态回调、实际工具集合诊断、禁用压缩模式、runtime usage、图片、取消和 writer busy→idle；失败探测保留 | 原已安装 binary 仍无成功证明；1M/80% 长测暂缓；完整上游 workspace 回归未通过，生产未切换 |
-| M1 | 原文接收、严格配置、原文 hash/去重；v4 additive 迁移与旧来源标记；SQLite backup API、artifact/media 副本、dry-run/apply 命令；验证并导入绑定、目录、别名/tombstone | 生产迁移及真实 v3→v4 live 续接验收 |
+| M1 | 原文接收、严格配置、原文 hash/去重；空库初始化 v4；非空旧状态拒绝转换 | 数据迁移按用户要求移除，LIVE-24 不再支持 |
 | M2 | final capture、原件和 recap 已接 worker/Delivery；系统控制回复归档并记入交互；业务失败/取消/中断另存 system 通知，不把业务草稿标成功；`/result` 原件片段不经短文捷径泄露给 Bridge；独立无工具 recap；恢复保留完成时间 | 真实 recap 语义验收、完整故障矩阵 |
 | M3 | 管理生命周期接线、进程 ownership marker、原生最后 turn 校验、L0 handoff、generation CAS、80% 日志；接收恢复与结果补提交；Bridge/Route 按 root 共享已配置工具调用预算 | 全链路恢复故障注入；完整三层 live 验收 |
 | M4 | 主链路、原文/当前图片、单次派发/FIFO、A-B-A、澄清源文；目录批准与 scope 别名；请求/会话模型覆盖、逐字段来源、业务窗口参数传递及原生观测；持久历史 ref；new/sessions/find/read/resume/more 控制命令；脱敏 debug task；update/restart 的明确批准、排空与最终原件归档/幂等恢复 | 完整故障/三轮 live runner |
 | M5 | catalog/reader/verifier 已接选择和查询；Codex 索引精确定位核对 header、header fallback、Pi 分支阅读；已验证完成时间按 file revision 缓存，完整且全部已验证的候选页按完成时间排序；支持本机 0.155.1 的 settings/UI mirror/world_state/usage 记录 | 后台增量索引/跨页完整覆盖排序、Pi readiness 与 live lane、更多真实业务历史格式验收 |
-| M6–M8 | 正在完善；LIVE-01/02/03/04/05/06/07/08/09/10/11/12/13/14/15/16/17/18/19/20/21/22/23/24/25/28/29/30 adapter 已接入；报告锁定 assertion/predicate/expected，核对证据文件及哈希；清理未确认会阻止后续场景；工具哈希审计；旧 58 ID 保留并补离线映射；权威文档区分默认模式和三层施工状态 | 剩余命令/控制/故障路径的远端写入 oracle、完整故障恢复、最终发布检查与发布 |
+| M6–M8 | 正在完善；LIVE-01/02/03/04/05/06/07/08/09/10/11/12/13/14/15/16/17/18/19/20/21/22/23/25/28/29/30 adapter 已接入；报告锁定 assertion/predicate/expected，核对证据文件及哈希；清理未确认会阻止后续场景；直接证据检查；旧 58 ID 保留并补离线映射；权威文档区分默认模式和三层施工状态 | 未验证断言的直接证据、完整故障恢复、最终发布检查与发布 |
 
-`openService` 已接 `HierarchicalBridge`，生产 factory 要求匹配模型、binary SHA、native config/policy digest 的完整 `runtime-lock.json`；缺失、不完整或不匹配均拒绝启动，不回退到 legacy 执行。probe 现可为实际具备两项限制能力的独立候选产生 PASS 证明；原已安装 binary 的旧失败证明没有被修改。运行时每轮还必须提供匹配当前角色工具集合的 native 诊断。空新库可初始化 v4；非空旧库要求显式迁移。现有生产服务和部署配置未切换。
+`openService` 已接 `HierarchicalBridge`，生产 factory 要求匹配模型、binary SHA、native config/policy digest 的完整 `runtime-lock.json`；缺失、不完整或不匹配均拒绝启动，不回退到 legacy 执行。probe 现可为实际具备两项限制能力的独立候选产生 PASS 证明；原已安装 binary 的旧失败证明没有被修改。运行时每轮还必须提供匹配当前角色工具集合的 native 诊断。空新库可初始化 v4；非空旧库拒绝转换，需另用空 stateRoot。现有生产服务和部署配置未切换。
 
 项目规则仍关闭并检查来源。仅允许声明登录 home 中固定、非符号链接的个人 `AGENTS.md` / `AGENTS.override.md`；其他项目/自定义来源拒绝。此前把个人全局指令也一律拒绝的检查已修正；允许个人指令不是工具隔离的证据，后者仍须独立通过 M0。
 
-## 已执行证据
+## 历史已执行证据（清理前候选）
 
 2026-09-23–24，macOS arm64、Codex CLI `0.155.1`：
 
 - `npm ci` 成功；npm 报告 1 项 high dependency vulnerability，未进行与任务无关的自动升级。
 - 基线 `npm run check`：216/216 OFFLINE 测试通过。
-- 此前全量 `npm run check`：421/421 OFFLINE 测试通过，无 skipped/deselected，日志 `refusal-fifo-final-check.txt`。提交前当前版本检查见本文件的本阶段记录和 docs/verification.md。本轮新增原生 add-file 内容/路径哈希、完整 code-mode 调用提取、受限 shell AST、命令/原生 mirror 配对、fixture Git 配置与本地 remote、宿主控制完成证据回归。首轮 412 passed / 1 failed 为新测试夹具漏传 sessionKey，修复后完整通过；原 `scoped-git-final-check.txt` 失败日志保留。新增崩溃进程归档/未发送回调证明、语义初筛及真实测试命令输出观察回归。新增死亡资源恢复、活动进程拒绝、恢复中断/符号链接及并发恢复回归。新增中文/短词全文搜索、范围与分页、索引状态同步和旧结果完整性标记回归。新增原件捕获/工具返回仪表、原生工具输出校验词来源、Recap 调用/策略/清理及拒绝缺失证据的回归。新增真实工具实例的注入拒绝探针，确认拒绝发生在 handler 调用之前。新增纯本地工具元信息表达式的严格语法与配对原生记录检查；首轮新增两项因 JS AST flag 比较错误失败，修复后全量通过，保留 `metadata-query-check.txt` 原失败。新增完整单候选的准确验证与所有工具 bounds 文本化回归。新增 partial 空页、非默认候选拒绝及宿主目录回执回归。新增 Recap 有限重试账本和无工具管理轮审计回归。新增安全工具错误码和管理策略变更换代回归；非空业务绑定保护另有 `policy-binding-check.txt` 定向通过。新增隔离认证、受控历史损坏与恢复拒绝后禁止同请求新建回退的回归。新增真实历史工具观察仪表和停止准入检查。新增身份注入仪表和纯管理查询的远端写入审计回归。新增媒体乱序仪表、native 策略审计与中断披露/关闭证据回归。此前 345 项检查曾因新增策略 hash 导致旧绑定迁移失败而为 344 passed / 1 failed（`project-trust-wiring-check.txt`）；现已补充显式迁移的策略映射和实际 profile 变更拒绝测试。新增无工具执行审计、管理工具/摘要/fixture 关联、图片包装哈希、视觉 fixture 和候选代码哈希检查。包含两种原生用户记录格式、原生输入顺序/完成哈希、旧校验词检测、fork/compaction 标记、部分记录拒绝，以及明确否认/肯定/待语义审查的区分；不构成全套设计验收。
+- 此前全量 `npm run check`：421/421 OFFLINE 测试通过，无 skipped/deselected，日志 `refusal-fifo-final-check.txt`。提交前当前版本检查见本文件的本阶段记录和 docs/verification.md。当时新增原生 add-file 内容/路径哈希、完整 code-mode 调用提取、受限 shell AST、命令/原生 mirror 配对、fixture Git 配置与本地 remote、宿主控制完成证据回归。首轮 412 passed / 1 failed 为新测试夹具漏传 sessionKey，修复后完整通过；原 `scoped-git-final-check.txt` 失败日志保留。新增崩溃进程归档/未发送回调证明、语义初筛及真实测试命令输出观察回归。新增死亡资源恢复、活动进程拒绝、恢复中断/符号链接及并发恢复回归。新增中文/短词全文搜索、范围与分页、索引状态同步和旧结果完整性标记回归。新增原件捕获/工具返回仪表、原生工具输出校验词来源、Recap 调用/策略/清理及拒绝缺失证据的回归。新增真实工具实例的注入拒绝探针，确认拒绝发生在 handler 调用之前。新增纯本地工具元信息表达式的严格语法与配对原生记录检查；首轮新增两项因 JS AST flag 比较错误失败，修复后全量通过，保留 `metadata-query-check.txt` 原失败。新增完整单候选的准确验证与所有工具 bounds 文本化回归。新增 partial 空页、非默认候选拒绝及宿主目录回执回归。新增 Recap 有限重试账本和无工具管理轮审计回归。新增安全工具错误码和管理策略变更换代回归；非空业务绑定保护另有 `policy-binding-check.txt` 定向通过。新增隔离认证、受控历史损坏与恢复拒绝后禁止同请求新建回退的回归。新增真实历史工具观察仪表和停止准入检查。新增身份注入仪表和纯管理查询的远端写入审计回归。新增媒体乱序仪表、native 策略审计与中断披露/关闭证据回归。此前 345 项检查曾因新增策略 hash 导致旧绑定迁移失败而为 344 passed / 1 failed（`project-trust-wiring-check.txt`）；现已补充显式迁移的策略映射和实际 profile 变更拒绝测试。新增无工具执行审计、管理工具/摘要/fixture 关联、图片包装哈希、视觉 fixture 和候选代码哈希检查。包含两种原生用户记录格式、原生输入顺序/完成哈希、旧校验词检测、fork/compaction 标记、部分记录拒绝，以及明确否认/肯定/待语义审查的区分；不构成全套设计验收。
 - 此前同批全量为 325 passed / 1 failed，CLI01 报 interrupted；单独 CLI 六项和后续完整 326 项通过，原失败保留，未把未确认原因直接归为环境问题。
 - 本轮第一次全量回归为 298 passed / 1 failed：新测试在服务启动后修改目录配置，被既有 `PROFILE_CHANGED` 守卫拒绝。修正夹具为启动前配置，再验证窗口变化导致新业务会话；后续全量先 300/300、加入失败通知测试后 304/304 通过。该失败不是 live 模型结果。
 - `git diff --check` 通过；冻结设计包 `SHA256SUMS` 全部通过；无 `--live` 的 probe 返回 `LIVE_OPT_IN_REQUIRED`，未启动模型。
@@ -64,7 +68,7 @@
 
 私有证据位于被 Git 忽略的 `runtime/three-layer/`：`baseline-check.txt`、`implementation-check.txt`、`probe/*/probe.json` 等。保留所有失败探测；没有挑选一次成功结果替代失败。认证、私有配置、native refs 与模型原始输出不提交。
 
-维护命令和备份边界见 [迁移说明](THREE_LAYER_MIGRATION.md)。正式 apply 的 CLI 仍要求完整 M0 证明；本轮 apply 仅在离线合成 fixture 中验证，没有迁移生产库。
+当时的迁移 CLI 仅在离线合成 fixture 中验证，没有迁移生产库；该 CLI、迁移实现及操作说明现已删除。
 
 live 入口进度见 [runner 状态](THREE_LAYER_LIVE_RUNNER.md)。旧 installed runtime 的 core 预检证据 `live-preflight/6ef8e688-1a1c-4173-8a75-d2ad90386202` 输出 57 个 BLOCKED attempt（`CONTROLLER_CAPABILITY_INCOMPLETE`）。binary、configuration 与 model digest 匹配，缺项明确为 `capabilityReady`、`effectiveToolSurfaceVerified`、`nativeAutoCompactionDisabledVerified`。此前 `a45b12e5-1d41-47ce-9263-b6723d35becf` 的泛化 MISMATCH 错误已修正诊断分类；能力门禁没有放宽。该预检未运行对应模型场景、未绕过 M0；独立候选随后已执行的 live 证据见下文。
 
@@ -159,7 +163,7 @@ LIVE-13 adapter 已在隔离业务 native home 建立真实健康绑定后添加
 
 历史参数修正后的 `interaction-limit-live/5c73377b-4e6d-4c69-ab36-078ec98b1efd` 三次已全部执行完成，`history-reevaluated-result.json` 均 PASS。目录表格中的同一行重复引用自身编号不等于重复交互，无工具筛选仍有本轮可信策略与完成证据；各次原 FAIL/BLOCKED 文件保留。旧 interaction-live 第三次实际参数失败保持 FAIL。
 
-`external-intent-live/d139df9e-ffb7-4db6-8fea-c3636ada3d9a` 三轮准确恢复外部真实 CLI 会话并返回 nonce，核心及已有全局断言通过；原件/输入保持身份，管理 session 被排除。该轮缺远端写入 oracle，仍 BLOCKED。后续 `external-complete-live/1ee08673-60b7-45a4-a9fe-dabbf7d53b75` 已完成：第 3 次完整 PASS；第 2 次只有本地 ALL_TOOLS 元信息筛选，核对原生文件 SHA/revision 未变后，独立 `metadata-reevaluated-result.json` 为 PASS。该查询仍记为工具执行，严格 AST 白名单与同 turn 的 call/output 配对只证明未调用远端动作，不宣称 OS 隔离。第 1 次包含真实命令执行，仍为 BLOCKED。原报告均保留，重算没有模型调用或业务重放。
+`external-intent-live/d139df9e-ffb7-4db6-8fea-c3636ada3d9a` 三轮准确恢复外部真实 CLI 会话并返回 nonce，核心及已有全局断言通过；原件/输入保持身份，管理 session 被排除。该轮缺远端写入 oracle，仍 BLOCKED。后续 `external-complete-live/1ee08673-60b7-45a4-a9fe-dabbf7d53b75` 已完成：第 3 次完整 PASS；第 2 次只有本地 ALL_TOOLS 元信息筛选，核对原生文件 SHA/revision 未变后，独立 `metadata-reevaluated-result.json` 为 PASS。该结论来自当时的解析审计工具，工具现已移除，不作为当前候选的验证结果。第 1 次包含真实命令执行，仍为 BLOCKED。原报告均保留，重算没有模型调用或业务重放。
 
 LIVE-20 adapter 已实现四个独立 fixture：恰好24h、24h+1ms、显式恢复旧会话、管理操作。只通过 openService 的业务时钟 seam 改变会话年龄判断；控制器换代以 rotate_pending 状态注入，保留原 runtime usage，明确不宣称真实等待24h或真实跨80%。管理分支核对历史读取、原件投递、缓存短答 recap 和真实管理换代不刷新业务时钟；缓存 recap 不冒称新的摘要模型调用。旧 `clock-live/50308d83-446c-4d7a-a9bf-282585613b08` 三次 FAIL：过期默认 new 被模型拒绝执行，以及一处准备请求被当作纯目录切换。Route 静态提示现明确普通工作遵从宿主过期后的默认 new，准备阶段使用明确的记忆任务建立业务会话。全新 `clock-default-live/a4e9e6c2-3dbb-4cc4-89c1-d01e46a0ce54` 三轮已完成，四个核心断言及已有全局断言全部通过；各次只因控制命令的远端写入 oracle 未覆盖而 BLOCKED。旧请求未重放。
 
@@ -175,7 +179,7 @@ RecapService 在调用模型前持久化每次 attempt 的 modelCallIds；CodexR
 
 额外真实模型搜索检查 `search-live/7b29a9fc-fd0c-4581-bfcb-85c04e3a1bd0` 三轮 PASS：真实 gpt-6-sol/medium 管理模型调用搜索，准确返回本目录匹配项，排除另一对话及只在原件中出现的词，业务调用为零，Bridge 披露/远端写入审计通过，配置未变且清理确认。准备数据明确是合成 system 历史，不冒称业务 LLM 完成；报告保存脚本/编译候选 hash。
 
-迁移现在给旧结果增加 legacy-result 元信息：OUTPUT_TRUNCATED 对应 legacy-truncated，其他结果为 unknown；originalArchived=false，旧文本仍在 jobs.result_text，未伪造原件文件或完成证据。/debug 返回该标记而不暴露旧结果正文。LIVE-24 adapter 已加入真实 CLI 旧 session、v3 WAL backup/dry-run/apply、健康原 ID 续接和独立 tainted 分支；旧裁剪命令结果、游标和中断状态是明示合成 fixture。`migration-live/650eb070-d1a6-42cd-b164-c7ebd26dcdb9` 三轮的五个核心断言及已有全局断言通过，每次仅远端写入审计 BLOCKED；临时 auth.json 剩余数为零。
+历史迁移实现（现已删除）曾给旧结果增加 legacy-result 元信息：OUTPUT_TRUNCATED 对应 legacy-truncated，其他结果为 unknown；originalArchived=false，旧文本仍在 jobs.result_text，未伪造原件文件或完成证据。/debug 返回该标记而不暴露旧结果正文。当时 LIVE-24 adapter 曾加入真实 CLI 旧 session、v3 WAL backup/dry-run/apply、健康原 ID 续接和独立 tainted 分支；旧裁剪命令结果、游标和中断状态是明示合成 fixture。`migration-live/650eb070-d1a6-42cd-b164-c7ebd26dcdb9` 三轮的五个核心断言及已有全局断言通过，每次仅远端写入审计 BLOCKED；临时 auth.json 剩余数为零。
 
 LIVE-13 已接 before/after Git 快照与 native/management/recap 审计，验证读取范围的仪表在事后审计前恢复，避免把审计读取混作续接读取。`large-history-complete-live/09ba8cce-9c21-4a45-a9c0-493d4d93f2bd` 三轮核心及已有全局断言 PASS；每轮原生确有两次读取 README 的 rg 执行及 CommandExecution 记录，原命令审计未覆盖，原报告保持 BLOCKED。现补充受限读取审计并对原件独立重算：read-command-reevaluated-result-v2.json 三轮完整 PASS。记录仍明确为实际命令执行，不改称“无工具调用”。
 
@@ -197,18 +201,10 @@ LIVE-06 adapter 已加入真实业务两项独立修改、只读查A后active仍
 
 LIVE-28 adapter 已接唯一连续指代和双候选两个独立 Git fixture。双候选由真实业务分别在 A/B 留下未提交修改，再通过真实用户层说明要求省略目录时先澄清；未向模型手工注入已选目录。核对澄清前零业务执行、选择后 sourceRequestId/原工作 query hash、重复选择消息去重，以及 A 的本地提交/推送和 B 不变。宿主选择解析新增“就是刚才查的 term4u 那个”完整句式，只匹配已授权选项；混有新工作内容仍保留为新请求，多选匹配拒绝歧义。`elliptical-live/cc622b2d-68f0-47d2-8fc0-acb276e28c72` 三轮、每轮两个独立子场景均完成，核心及已有全局断言全部通过，仅远端写入审计 BLOCKED。
 
-受限读取审计仅接受已核对的有限精确 rg README/AGENTS 文件枚举和 README 标题读取形式；TypeScript AST 拒绝额外调用、展开、未知字段和提权参数。显式 workdir 必须等于已验证目录，并要求同 turn 原生 managed/read-only/restricted-network 策略、配对 call/output、唯一成功 CommandExecution 与命令/cwd一致；跨 turn 沿用策略、缺失/重复记录、未知命令仍不通过。LIVE-13 重算核对原 native 文件SHA/revision、原数据库字节与 Git 快照均未变，没有新模型调用或重放。这是有限已观察读取操作的证据，不是任意 shell 或全系统副作用/OS隔离证明。
-
-code-mode-calls 只做闭合语法调用提取，不执行 JS：覆盖 const/await、Promise.all/allSettled、只打印结果的 for-of/forEach、JSON 显示表达式及固定 exit_code 失败退出。输出位置可显示 opaque tool result，但不能把它当作工具参数；隐藏调用、动态参数、未知语法和部分解析均拒绝。shell-commands 使用固定 devDependency mvdan-sh 0.10.1 的 AST 枚举有限命令和条件分支；该包为 BSD-3-Clause、一个包，npm 已标 deprecated（指向上游 mvdan/sh issue 1145），仅用于验收，不进入生产执行路径。最终依赖选择后 npm ci 成功，仍报告原有 1 high vulnerability；未自动升级。bash-parser 和 sh-syntax 的评估安装已移除，不在 lockfile 中。
-
-原生命令审计现在对有限读取、有限 pathlib 读取/字节比较/打印/断言程序（用隔离 Python 标准 AST 解析，源程序不执行）和 fixture Git 命令逐项配对，要求本轮 managed/restricted-network 策略、完整 call/output、唯一命令/cwd/终态 mirror；失败退出也记录真实非零状态，不冒充执行成功。Git 不能仅靠语法获通过：额外读取实际有效 config，拒绝 includes、URL 改写、pushurl、自定义 hooks/filters/fsmonitor/外部 diff 等；核对物理目录和本地 bare ref。add-file patch 需要原生 FileChange 精确匹配和最终物理文件/内容哈希。审计仅保存哈希和有限状态；它依赖本机工具链及原生策略证据，不是全系统副作用或 OS 隔离证明。
-
 `git-audited-live/483d69d6-322d-4648-9cb1-ba86bd2e3139` 三轮已完成，原报告因新命令变体未分类而 BLOCKED，核心及其他全局断言通过、清理确认。补齐受限语法后，使用其真实初始/最终 Git 快照和未改变的原生文件 SHA/revision、原数据库哈希独立重算：三轮 scoped-effects-reevaluated-result.json 全部 PASS，原报告保留，没有业务重放。
 
 同样按原 native SHA/revision、原数据库字节和原 Git 快照只读重算，model-work-live（LIVE-05）、long-history-route-live（LIVE-09）、external-complete-live（LIVE-12）、short-answer-live（LIVE-29）各三轮 scoped-effects-reevaluated-result.json 全部 PASS。均只提升对应候选的远端写入审计，不宣称全套当前候选验收已完成。
 
 完整原生动作中没有写入能力时，远端写入断言可由实际动作和管理工具/摘要审计证明；涉及文件/Git 修改则仍要求真正的前后快照。缺一侧快照、已提供但不匹配的快照、未验证脚本/工具均不放行。补充采集的原生文件用当前采集时间/hash标记，不假称旧时已采集。LIVE-20 clock-default-live 四个分支各三轮 supplemental-effects-reevaluated-result-v2.json 全部 PASS；原始报告和初版补审保留。/read、/more、/result 的直送原件依 system 完成、result-delivery 分类和无 Recap 调用证明，不要求本来就未调用的摘要模型提供完成记录；真实 24h/80% 仍未测。
 
-旧 LIVE-07/18 的补充审计仍 BLOCKED：LIVE-07 的故障是在 native 调用前注入，但未保存对应调用跳过证明；旧 LIVE-18 还缺完整 Recap 调用账本。现测试仪表在调用原 CodexRecapModel.summarize 前记录 test-only injection identity，审计将其与失败准入次数及零 native 调用证据配对，不伪造 turn.completed。这三组批次均已结束。long-original-audited-live 的历史查询出现真实意图冲突失败，后续修复及复测见本阶段提交状态；recap-audited-live 与 elliptical-audited-live 已完成后续补审。
-
-固定 arithmetic fixture.test.cjs/package.json 审计、受限 marker 文件写入哈希审计、FIFO 固定脚本及宿主拒绝检查已纳入编译和离线检查。迁移基线核对作为本阶段新增测试代码提交，其完整 live 验收仍未完成。
+旧 LIVE-07/18 的补充审计仍 BLOCKED：LIVE-07 的故障是在 native 调用前注入，但未保存对应调用跳过证明；旧 LIVE-18 还缺完整 Recap 调用账本。当时通过测试仪表的 injection identity 与补审工具配对检查；现保留故障注入仪表，补审工具已移除。这三组批次均已结束。long-original-audited-live 的历史查询出现真实意图冲突失败，后续修复及复测见本阶段提交状态；recap-audited-live 与 elliptical-audited-live 已完成后续补审。

@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { setup } from '../helpers.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { CodexRecapModel, type RecapCallAudit } from '../../src/answers/codex-recap.ts';
 import type { ControllerFactory } from '../../src/controllers/factory.ts';
 import { sha256 } from '../../src/orchestration/requests.ts';
 
 for (const variant of ['success', 'unverified-policy', 'cleanup-unknown'] as const) test(`OFFLINE recap call audit: ${variant}`, async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const callId = randomUUID(), requestId = randomUUID(), threadId = randomUUID(), captured: unknown[] = [];
   let closed = 0;
   const factory = { async create(role: string, id: string) {

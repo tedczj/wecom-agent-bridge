@@ -5,7 +5,7 @@ import path from 'node:path';
 import { setup, fixture } from '../helpers.ts';
 import { parseConfig } from '../../src/config.ts';
 import { normalize } from '../../src/local.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
 import { ArtifactStore } from '../../src/answers/artifact-store.ts';
 import { listInteractions } from '../../src/answers/projection.ts';
@@ -17,7 +17,7 @@ function prepared(t: Parameters<typeof setup>[0]) {
   e.orchestration.answers.root = path.join(f.c.stateRoot, 'artifacts');
   e.orchestration.controllerRuntime.workRoot = path.join(f.c.stateRoot, 'controllers');
   const c = parseConfig({ ...f.c, models: e.models, orchestration: e.orchestration });
-  const store = f.store(); migrateV4(store);
+  const store = f.store(); initializeHierarchy(store);
   const incoming = normalize(fixture('/approve'), c, 'local:codex'), requests = new RequestStore(store), request = requests.accept(incoming).request;
   const job = store.reserve(incoming, 'command', undefined, request.request_id).job;
   store.db.prepare("UPDATE orchestration_requests SET job_task_id=?,phase='result_processing' WHERE request_id=?").run(job.task_id, request.request_id);

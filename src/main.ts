@@ -25,8 +25,7 @@ import { CodexRecapModel } from './answers/codex-recap.ts';
 import { NativeReader } from './history/reader.ts';
 import { ResumeVerifier } from './history/verifier.ts';
 import { CodexWriterReadiness } from './history/writer-readiness.ts';
-import { migrateV4 } from './migrations/v4.ts';
-import { ensureInteractionSearch } from './answers/search-index.ts';
+import { initializeHierarchy } from './orchestration/schema.ts';
 import { recoverHierarchyResources } from './orchestration/recover-resources.ts';
 export function createBackend(c: Config, media: MediaStore, untrustedProject = !!c.orchestration): AgentBackend {
   return c.backend === 'codex' ? new CodexBackend(c, image => media.read(image), undefined, untrustedProject) : new PiBackend(c, image => media.read(image));
@@ -65,12 +64,7 @@ export async function openService(c: Config, output: Writable, transport?: Trans
   try {
     invariant(!existsSync(path.join(c.stateRoot, 'agent-process.json')), 'AGENT_PROCESS_REVIEW_REQUIRED');
     store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c);
-    if (c.orchestration && store.db.prepare('PRAGMA user_version').get()!.user_version !== 4) {
-      invariant(!store.db.prepare('SELECT 1 FROM jobs LIMIT 1').get() && !store.db.prepare('SELECT 1 FROM sessions LIMIT 1').get() &&
-        !store.db.prepare('SELECT 1 FROM routing_state LIMIT 1').get(), 'HIERARCHICAL_MIGRATION_REQUIRED');
-      migrateV4(store);
-    }
-    if (c.orchestration) ensureInteractionSearch(store);
+    if (c.orchestration) initializeHierarchy(store);
     const oldTransport = store.db.prepare("SELECT value FROM metadata WHERE key='transport'").get() as {value:string} | undefined;
     invariant((oldTransport?.value ?? 'local') === c.transport || (!oldTransport && !store.db.prepare('SELECT 1 FROM jobs LIMIT 1').get()), 'STATE_TRANSPORT_MISMATCH');
     invariant(!!transport === (c.transport === 'weixin'), 'TRANSPORT_MISMATCH');

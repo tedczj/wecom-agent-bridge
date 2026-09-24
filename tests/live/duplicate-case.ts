@@ -11,8 +11,6 @@ import type { LiveCase } from './spec.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 
 export async function runDuplicateCase(base: Config, test: LiveCase, attempt: number, globals: string[], output: string): Promise<CaseResult> {
   invariant(test.id === 'LIVE-11' && test.steps.length === 3 && test.steps[0]?.action === 'user', 'LIVE_SCENARIO_UNSUPPORTED');
@@ -55,9 +53,6 @@ export async function runDuplicateCase(base: Config, test: LiveCase, attempt: nu
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     const replay = replayEvidence(service.store, [first.taskId]);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    const nativeAudit = await nativeContextAudit(service.store, c, job, nonce), remote = remoteWriteEvidence(service.store, [first.taskId], [nativeAudit], before, after);
-    fixture.save('remote-write-audit.json', remote);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('fixture-status.json', { before, after, fileSha256: sha256(file) });
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally {

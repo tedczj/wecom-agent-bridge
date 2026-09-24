@@ -4,17 +4,17 @@
 
 `main.ts` selects `HierarchicalBridge` only for explicit `orchestration.mode=hierarchical` and a complete, matching controller capability proof. An independent [compatibility candidate](THREE_LAYER_RUNTIME_COMPATIBILITY.md) has passed M0 for the observed model/window; the unchanged installed binary has no matching successful proof. Production has not been switched. [Implementation status](THREE_LAYER_IMPLEMENTATION_STATUS.md) identifies implemented components, live observations and remaining acceptance gaps. The [frozen design](THREE_LAYER_AGENT_BRIDGE.md) remains the target contract, not evidence of completion.
 
-The hierarchical path uses v4 raw requests, durable host-bound delegation, separate management sessions and one business worker, immutable answer artifacts, safe recap projections, and runtime-only usage telemetry. Model/effort/window values retain individual sources. No historical text or images are injected into business prompts. Migration from populated v3 state is explicit and backed up; there is no automatic replay or fallback to legacy execution after a capability failure.
+The hierarchical path uses v4 raw requests, durable host-bound delegation, separate management sessions and one business worker, immutable answer artifacts, safe recap projections, and runtime-only usage telemetry. Model/effort/window values retain individual sources. No historical text or images are injected into business prompts. Populated v3 state cannot be converted to hierarchical mode; use a separate empty stateRoot. There is no automatic replay or fallback to legacy execution after a capability failure.
 
 The remaining sections describe the existing non-hierarchical implementation. Their history-injection, schema-v3 and interpreter rules do not describe the new path.
 
-## Scope and migration
+## Scope and state
 
 Personal Weixin ClawBot and local CLI/JSONL share the Codex/Pi execution engine. Enterprise WeCom is not implemented. This document describes the current implementation; historical snapshots remain in Git history.
 
 Supported: personal Weixin ClawBot text/image messages and supplied voice transcripts; CLI single request and persistent stdin JSONL; Codex exec backend; Pi RPC backend; local PNG/JPEG/WebP; durable requests/sessions/results/outbox; bounded single-worker scheduling; explicit cancellation and local review. Not supported: ordinary Weixin friend/group takeover, WeCom, WebSocket/webhooks, standalone ASR, outbound voice/media, file/video/quote handling, OCR, HTTP API, arbitrary remote users, automatic approvals or Windows process management.
 
-The package is `local-agent-bridge` 0.2.0. Schema v2 upgrades transactionally to v3 (routing state and nullable last-response time); old v1 is rejected without modification. New deployments use a fresh stateRoot. Historical chat tasks are not translated or automatically replayed.
+The package is `local-agent-bridge` 0.2.0. Existing v3/v4 state is supported in its corresponding mode; v1/v2 is rejected without modification. New deployments use a fresh stateRoot. Historical chat tasks are not translated or automatically replayed.
 
 ## Boundaries and modules
 
@@ -100,7 +100,7 @@ Wait for `agent_settled` plus idle state, not prompt success or `agent_end`; ret
 
 ## Persistence, crashes and output
 
-SQLite WAL + synchronous FULL + foreign keys + bounded busy timeout. One stateRoot instance lock. Schema version 3 contains metadata, sessions (including last_response_at), jobs, outbox and routing_state. v2 receives an atomic additive migration; old timestamps stay unknown. Atomic transactions cover reserve/dedup/capacity, worker claim, and terminal status/result/outbox creation.
+SQLite WAL + synchronous FULL + foreign keys + bounded busy timeout. One stateRoot instance lock. Schema version 3 contains metadata, sessions (including last_response_at), jobs, outbox and routing_state. New state creates the current tables directly; no data migration is provided. Atomic transactions cover reserve/dedup/capacity, worker claim, and terminal status/result/outbox creation.
 
 ```text
 preparing -> queued -> running -> succeeded | failed

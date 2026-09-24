@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { setup, fixture } from '../helpers.ts';
 import { normalize } from '../../src/local.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { parseModels, parseOrchestration } from '../../src/orchestration/config.ts';
 import { RequestStore, sha256 } from '../../src/orchestration/requests.ts';
 import { ControllerRegistry } from '../../src/orchestration/registry.ts';
@@ -15,7 +15,7 @@ import type { Selection } from '../../src/store.ts';
 function ready(f: ReturnType<typeof setup>, raw = '  work\r\ne\u0301  ') {
   const example = JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
   f.c.orchestration = parseOrchestration(example.orchestration, parseModels(example.models));
-  const store = f.store(); migrateV4(store);
+  const store = f.store(); initializeHierarchy(store);
   const requests = new RequestStore(store), incoming = normalize(fixture(raw), f.c, 'local:codex');
   const request = requests.accept(incoming).request;
   requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'bridge_planning');

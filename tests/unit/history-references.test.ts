@@ -4,12 +4,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setup } from '../helpers.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { HistoryReferences } from '../../src/history/references.ts';
 import type { Target } from '../../src/routing/catalog.ts';
 
 test('OFFLINE history references: persistent references survive handler recreation, enforce scope/profile and expire at 15 minutes', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const root = path.join(f.c.codex.home, 'sessions'); mkdirSync(root);
   const id = randomUUID(); writeFileSync(path.join(root, id + '.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id, cwd: f.workspace } }) + '\n');
   const target: Target = { config: f.c, digest: 'profile', directory: { id: 'test', path: f.workspace, identity: 'inode', profile: 'read', aliases: [], description: '' } };

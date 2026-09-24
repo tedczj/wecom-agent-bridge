@@ -13,7 +13,6 @@ import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
 import { nativeContextAudit, nonceAnswerClaim } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { geometryImage, geometryAnswer } from './visual-fixture.ts';
 
 export const readonlyCases = new Set(['LIVE-01', 'LIVE-02', 'LIVE-03', 'LIVE-04', 'LIVE-10', 'LIVE-22', 'LIVE-29']);
@@ -30,13 +29,12 @@ export async function runReadonlyCase(base: Config, test: LiveCase, attempt: num
       const bytes = await geometryImage(); imageFile = path.join(fixture.root, 'image.png'); imageSha256 = sha256(bytes);
       writeFileSync(imageFile, bytes, { mode: 0o600 }); fixture.save('image-fixture.json', { sha256: imageSha256, width: 192, height: 112 });
     }
-    let setupSession: string | undefined, setupRequest: string | undefined;
+    let setupSession: string | undefined;
     if (test.id === 'LIVE-29') {
       const accepted = await service.accept({ id: randomUUID(), session: 'fixture', text: '在 term4u 建立业务会话，只回复“准备好了”，不要修改文件。', images: [] });
       invariant(accepted.taskId && !accepted.rejected, 'LIVE_SETUP_REJECTED'); await service.settle();
       const job = service.store.get(accepted.taskId);
       invariant(job.kind === 'agent' && job.status === 'succeeded', 'LIVE_SETUP_INCOMPLETE'); setupSession = job.session_key;
-      setupRequest = accepted.taskId;
       fixture.save('setup.json', { requestId: accepted.taskId, sessionHash: sha256(job.session_key) });
     }
     for (const step of test.steps) {
@@ -123,15 +121,6 @@ export async function runReadonlyCase(base: Config, test: LiveCase, attempt: num
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     const replay = replayEvidence(service.store, requestIds);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    const allRequests = setupRequest ? [setupRequest, ...requestIds] : requestIds;
-    try {
-      const nativeAudits = [];
-      for (const id of allRequests) nativeAudits.push(await nativeContextAudit(service.store, c, service.store.get(id), nonce));
-      const remote = remoteWriteEvidence(service.store, allRequests, nativeAudits, before, after);
-      fixture.save('remote-write-audit.json', remote);
-      if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
-      else blockedReasons.noProductionRemoteWrites = 'REMOTE_WRITE_AUDIT_INCOMPLETE';
-    } catch (error) { blockedReasons.noProductionRemoteWrites = errorCode(error, 'REMOTE_WRITE_AUDIT_INCOMPLETE'); }
     fixture.save('observations.json', observations); fixture.save('request-status.json', requests);
   } catch (error) { executionError = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally { try { await fixture.close(); cleanupConfirmed = true; } catch (error) { executionError = errorCode(error, 'LIVE_CLEANUP_FAILED'); } }

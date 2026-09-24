@@ -14,7 +14,6 @@ import { liveFixture } from './fixture.ts';
 import { nativeContextAudit } from './native-context.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -25,7 +24,7 @@ export async function runExternalCase(base: Config, test: LiveCase, attempt: num
   const observations: Record<string, { pass: boolean; actual: unknown }> = {};
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    fixture = await liveFixture(isolated.config, output); const { service, c } = fixture, nonce = randomUUID(), beforeGit = fixture.gitState();
+    fixture = await liveFixture(isolated.config, output); const { service, c } = fixture, nonce = randomUUID();
     const catalog = new Catalog(c), directory = catalog.configured.find(row => row.id === 'term4u')!, model = c.models![c.orchestration!.business.defaultModelProfile]!;
     const target = catalog.target(directory, model);
     const incoming = normalize({ id: randomUUID(), session: 'fixture', text: `记住本会话校验词 ${nonce}。只回复“已记住”，不要使用工具或修改文件。`, images: [] }, c, 'local:codex');
@@ -65,9 +64,6 @@ export async function runExternalCase(base: Config, test: LiveCase, attempt: num
     const disclosure = bridgeDisclosure(service.store, [id]), replay = replayEvidence(service.store, [id]);
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    const remote = remoteWriteEvidence(service.store, [id], [audit], beforeGit, fixture.gitState());
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
-    fixture.save('remote-write-audit.json', remote);
     fixture.save('catalog.json', observations.nativeDiscovery); fixture.save('resume-events.json', audit); fixture.save('business-input.sha256', { source, wire: wires[0] });
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally { try { await fixture?.close(); cleanupConfirmed = true; } catch (error) { failure = errorCode(error, 'LIVE_CLEANUP_FAILED'); } isolated.close(); fixture?.save('observations.json', observations); }

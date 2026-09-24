@@ -14,8 +14,6 @@ import { liveFixture } from './fixture.ts';
 import { mediaOrderMeter } from './media-order-meter.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -103,10 +101,6 @@ else if(Date.now()>end){clearInterval(timer);process.exitCode=2;}},100);` : "pro
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
     invariant(Object.entries(sourceHashes).every(([name, hash]) => sha256(readFileSync(path.join(directory, name))) === hash), 'LIVE_SCRIPT_CHANGED');
-    const allIds = (service.store.db.prepare('SELECT request_id FROM orchestration_requests ORDER BY ingress_seq').all() as { request_id: string }[]).map(row => row.request_id);
-    const nativeAudit = await nativeContextAudit(service.store, c, jobs.at(-1)!, token);
-    const remote = remoteWriteEvidence(service.store, allIds, [nativeAudit], gitBefore, fixture.gitState()); fixture.save('remote-write-audit.json', remote);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('process-events.json', { first: process, second: lastMarker, sourceHashes });
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally {

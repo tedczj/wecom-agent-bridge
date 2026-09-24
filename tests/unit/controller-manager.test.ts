@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { setup, fixture } from '../helpers.ts';
 import { normalize } from '../../src/local.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { ControllerManager, type ControllerActor } from '../../src/controllers/manager.ts';
 import type { ControllerRuntime, ControllerRef, ControllerToolHandler, ControllerTurn } from '../../src/controllers/runtime.ts';
 import type { ControllerAuditEvent } from '../../src/orchestration/registry.ts';
@@ -34,7 +34,7 @@ class RuntimeDouble implements ControllerRuntime {
 }
 const noTools = () => async () => { throw new Error('unexpected tool'); };
 test('OFFLINE manager failure audit: only confirmed runtime cleanup produces an ended record', async t => {
-  const store = setup(t).store(); migrateV4(store);
+  const store = setup(t).store(); initializeHierarchy(store);
   for (const cleanupFails of [false, true]) {
     const runtime = new RuntimeDouble(), requestId = randomUUID();
     runtime.action = async query => { if (query === 'fail') throw Error('turn failed'); };
@@ -49,7 +49,7 @@ test('OFFLINE manager failure audit: only confirmed runtime cleanup produces an 
 });
 
 test('OFFLINE M3: lazy actors, byte-exact user input and threshold rotation preserve business binding', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const legacy = store.reserve(normalize(fixture(), f.c, 'local:codex'), 'command').job;
   store.complete(legacy.task_id, 'succeeded', 'secret raw answer must never enter a handoff');
   store.db.prepare(`INSERT INTO business_bindings(conversation_scope,directory_identity,backend_home_key,profile_digest,session_key,selection_source,updated_at)
@@ -72,7 +72,7 @@ test('OFFLINE M3: lazy actors, byte-exact user input and threshold rotation pres
   assert.equal(events.find(e => e.event === 'controller.rotate_requested')!.bindingDigest, events.find(e => e.event === 'controller.rotated')!.bindingDigest);
 });
 test('OFFLINE M3: actor serialization allows parent-child delegation without holding the parent lane', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store); const order: string[] = [];
+  const f = setup(t), store = f.store(); initializeHierarchy(store); const order: string[] = [];
   const route: ControllerActor = { ...bridge, role: 'route', directoryIdentity: 'directory' };
   let manager: ControllerManager;
   manager = new ControllerManager(store, async session => {
@@ -91,7 +91,7 @@ test('OFFLINE M3: actor serialization allows parent-child delegation without hol
   assert.equal(store.db.prepare('SELECT count(*) n FROM controller_sessions').get()!.n, 2);
 });
 test('OFFLINE M3: restart resumes matching native turn; configuration changes get a new generation', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   let runtime = new RuntimeDouble();
   const first = new ControllerManager(store, async () => runtime, 'home', () => {});
   const result = await first.run(bridge, 'one', noTools); await first.close();
@@ -107,7 +107,7 @@ test('OFFLINE M3: restart resumes matching native turn; configuration changes ge
   assert.equal(changed.session.generation, 1);
 });
 test('OFFLINE management policy: instruction and tool changes rotate at the next request without changing business bindings', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const business = store.reserve(normalize(fixture(), f.c, 'local:codex'), 'command').job;
   store.complete(business.task_id, 'succeeded', 'private business answer');
   store.db.prepare(`INSERT INTO business_bindings(conversation_scope,directory_identity,backend_home_key,profile_digest,session_key,selection_source,updated_at)
@@ -126,7 +126,7 @@ test('OFFLINE management policy: instruction and tool changes rotate at the next
   assert.equal(runtimes.length, 3); assert.equal(runtimes[2]!.inputs.filter(q => q === 'four').length, 1);
 });
 test('OFFLINE M3: unknown usage forbids a second user turn and bootstrap overflow does not loop', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store); let creates = 0;
+  const f = setup(t), store = f.store(); initializeHierarchy(store); let creates = 0;
   const runtime = new RuntimeDouble();
   const manager = new ControllerManager(store, async () => { creates++; return runtime; }, 'home', () => {}); f.cleanups.push(() => manager.close());
   await manager.run(bridge, 'one', noTools); runtime.omitUsage = true;
@@ -139,7 +139,7 @@ test('OFFLINE M3: unknown usage forbids a second user turn and bootstrap overflo
   assert.equal(creates, 2); assert.equal(huge.inputs.length, 1); assert.equal(huge.closed, true);
 });
 test('OFFLINE M3: failed replacement preserves the old current generation and its bindings', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store); let created = 0;
+  const f = setup(t), store = f.store(); initializeHierarchy(store); let created = 0;
   const manager = new ControllerManager(store, async () => { const r = new RuntimeDouble(); if (++created === 2) r.omitUsage = true; return r; }, 'home', () => {});
   f.cleanups.push(() => manager.close());
   const old = await manager.run(bridge, 'threshold', noTools);
@@ -148,7 +148,7 @@ test('OFFLINE M3: failed replacement preserves the old current generation and it
   assert.equal(manager.registry.current(old.session.logical_key)!.state, 'rotate_pending');
 });
 test('OFFLINE M3: restart marks interrupted planning terminal and only a new request starts recovery generation', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const requests = new RequestStore(store), request = requests.accept(normalize(fixture('old request'), f.c, 'local:codex')).request;
   requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'bridge_planning');
   const runtimes: RuntimeDouble[] = [], manager = new ControllerManager(store, async () => { const runtime = new RuntimeDouble(); runtimes.push(runtime); return runtime; }, 'home', () => {});

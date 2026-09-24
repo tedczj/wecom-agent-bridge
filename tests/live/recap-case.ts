@@ -12,8 +12,6 @@ import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
-import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 
 export async function runRecapCase(base: Config, test: LiveCase, attempt: number, globals: string[], output: string): Promise<CaseResult> {
   invariant(test.id === 'LIVE-18', 'LIVE_SCENARIO_UNSUPPORTED');
@@ -22,7 +20,6 @@ export async function runRecapCase(base: Config, test: LiveCase, attempt: number
   let failure: string | undefined, cleanupConfirmed = false;
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    const gitBefore = fixture.gitState();
     const accepted = await service.accept({ id: randomUUID(), session: 'fixture', text: test.steps[0]!.detail, images: [] });
     invariant(accepted.taskId && !accepted.rejected, 'LIVE_REQUEST_REJECTED'); const id = accepted.taskId; await service.settle();
     const job = service.store.get(id); invariant(job.kind === 'agent' && job.status === 'succeeded', 'LIVE_BUSINESS_NOT_COMPLETED');
@@ -59,10 +56,6 @@ export async function runRecapCase(base: Config, test: LiveCase, attempt: number
     observe('rawQueryMatchesSourceRequest', wires.every(w => w?.textSha256 === source), { source, wires });
     observe('permissionScopeValid', JSON.parse(job.input_json).workspaceId === 'term4u' && c.codex.sandbox === 'read-only' && !c.codex.networkAccess,
       { sandbox: c.codex.sandbox, networkAccess: c.codex.networkAccess, basis: 'configured fixture authorization, not OS isolation' });
-    const native = await nativeContextAudit(service.store, c, job, 'unused-remote-audit-marker');
-    const remote = remoteWriteEvidence(service.store, [id], [native], gitBefore, fixture.gitState());
-    fixture.save('remote-write-audit.json', remote);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('recap-fault.json', { injectedAt: 'RecapModel service boundary before first model invocation', failed, repairedState: repaired.state });
     fixture.save('raw-manifest.json', observations.artifactImmutable); fixture.save('call-counts.json', { before, after }); fixture.save('bridge-input-audit.json', disclosure);
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }

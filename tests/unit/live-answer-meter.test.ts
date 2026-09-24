@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { setup, fixture } from '../helpers.ts';
 import { normalize } from '../../src/local.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { RequestStore, sha256 } from '../../src/orchestration/requests.ts';
 import { ArtifactStore } from '../../src/answers/artifact-store.ts';
 import { RoleTools } from '../../src/orchestration/tools.ts';
 import { answerMeter } from '../live/answer-meter.ts';
 
 test('OFFLINE answer instrumentation preserves real capture and returns while recording only hashes and range metadata', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const request = new RequestStore(store).accept(normalize(fixture(), f.c, 'local:codex')).request;
   const artifacts = new ArtifactStore(store, path.join(f.c.stateRoot, 'artifacts'));
   const answer = artifacts.stage(request.request_id, 'business'), raw = 'PRIVATE_RAW_TEXT'.repeat(130) + ' 末尾私密值';

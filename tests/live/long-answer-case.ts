@@ -10,7 +10,6 @@ import { recapFaultMeter } from './recap-fault-meter.ts';
 import { nativeContextAudit } from './native-context.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -22,7 +21,6 @@ export async function runLongAnswerCase(base: Config, test: LiveCase, attempt: n
   let failure: string | undefined, cleanupConfirmed = false;
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    const beforeGit = fixture.gitState();
     invariant(c.orchestration!.answers.shortAnswerMaxChars === 1200 && c.orchestration!.answers.recapMaxChars === 1000, 'LIVE_RECAP_LIMITS');
     const setupQuery = test.id === 'LIVE-07' ? test.steps[0]!.detail :
       '在 term4u 生成超过五千字的合成技术报告，使用 Markdown 标题分为第一章至第五章。用工具生成一个新的32位十六进制随机标记，将 CHECKSUM=标记 作为第三章最后一行，其他章节不要重复标记。不要修改文件。';
@@ -79,11 +77,6 @@ export async function runLongAnswerCase(base: Config, test: LiveCase, attempt: n
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass && inspected.tools.every(row => row.role !== 'bridge' || !row.rawBodySeen), disclosure.actual);
     const work = ids.filter(value => service.store.get(value).kind === 'agent'), replay = replayEvidence(service.store, work);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    const allNative = [];
-    for (const requestId of work) allNative.push(await nativeContextAudit(service.store, c, service.store.get(requestId), token));
-    const remote = remoteWriteEvidence(service.store, ids, allNative, beforeGit, fixture.gitState());
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
-    fixture.save('remote-write-audit.json', remote);
     const wires = ids.map(value => ({ source: service.store.db.prepare('SELECT raw_query_sha256 FROM orchestration_requests WHERE request_id=?').get(value)!.raw_query_sha256,
       bridge: service.store.value<{ textSha256: string }>('controller-wire:bridge:' + value)?.textSha256,
       business: service.store.value<{ textSha256: string }>('business-wire:' + value)?.textSha256, kind: service.store.get(value).kind }));

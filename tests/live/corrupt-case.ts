@@ -17,7 +17,6 @@ import { liveFixture } from './fixture.ts';
 import { corruptPrivateHistory } from './corrupt-history.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import type { LiveCase } from './spec.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 
@@ -71,8 +70,6 @@ export async function runCorruptCase(base: Config, test: LiveCase, attempt: numb
           route: service.store.value<{ textSha256: string }>('controller-wire:route:' + id)?.textSha256,
           business: service.store.value<{ textSha256: string }>('business-wire:' + id)?.textSha256 }));
         const disclosure = bridgeDisclosure(service.store, [job.task_id, request.taskId]);
-        const ids = (service.store.db.prepare('SELECT request_id FROM orchestration_requests ORDER BY ingress_seq').all() as { request_id: string }[]).map(row => row.request_id);
-        const remote = remoteWriteEvidence(service.store, ids, [native], before, after); fixture.save('remote-write-audit.json', remote);
         const facts = { variant, source: 'real gpt-6-sol business session created in isolated native home', setupRequestId: job.task_id, requestId: request.taskId,
           nativeRefSha256: sha256(beforeRef!), healthyProfileDigest: healthy.profileDigest, mutation, directDenial, explicitCode, submits,
           noPrompt: !service.store.value('business-wire:' + request.taskId), noFresh: service.store.db.prepare("SELECT count(*) n FROM jobs WHERE kind='agent'").get()!.n === 1 && service.store.session(job.session_key).agent_ref_json === beforeRef,
@@ -81,7 +78,7 @@ export async function runCorruptCase(base: Config, test: LiveCase, attempt: numb
           rawQueryExact: rawHashes.every((row, index) => row.original === row.bridge && row.original === row.route && (index === 0 ? row.original === row.business : row.business === undefined)),
           permissionValid: c.codex.sandbox === 'workspace-write' && !c.codex.networkAccess && inside(fixture.projectRoot, target.directory.path) && inside(c.codex.home, candidate.file) && c.codex.home !== base.codex.home,
           noReplay: submits === 0 && setupAdmissions === JSON.stringify(service.store.value('business-prompt-admissions:' + job.task_id)) && !service.store.value('business-prompt-admissions:' + request.taskId),
-          disclosure, remote };
+          disclosure };
         branches.push(facts); fixture.save('branch.json', facts);
       } finally {
         if (CodexBackend.prototype.run === counted) CodexBackend.prototype.run = originalRun;
@@ -103,8 +100,6 @@ export async function runCorruptCase(base: Config, test: LiveCase, attempt: numb
     observations.noBusinessReplayAfterUncertain = { pass: branches.every(b => b.noReplay), actual: { uncertaintyExercised: false, basis: 'pre-prompt verification refusal and actual backend invocation counts', branches } };
     const disclosures = branches.map(b => b.disclosure as ReturnType<typeof bridgeDisclosure>);
     if (disclosures.every(d => d.complete)) observations.noBridgeRawAnswerDisclosure = { pass: disclosures.every(d => d.pass), actual: disclosures.map(d => d.actual) };
-    const remotes = branches.map(branch => branch.remote as ReturnType<typeof remoteWriteEvidence>);
-    if (remotes.every(remote => remote.complete)) observations.noProductionRemoteWrites = { pass: remotes.every(remote => remote.pass), actual: remotes.map(remote => remote.actual) };
   }
   for (const name of ['observations.json', 'corruption-fixture.json', 'verifier-result.json', 'business-submit-count.json', 'filesystem-audit.json'])
     writeFileSync(path.join(output, name), JSON.stringify(name === 'observations.json' ? observations : { branches, authSnapshotRemoved: !existsSync(path.join(isolated.config.codex.home, 'auth.json')) }, null, 2), { mode: 0o600 });

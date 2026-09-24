@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { setup, fixture } from '../helpers.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { normalize } from '../../src/local.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
 import { ControllerRegistry } from '../../src/orchestration/registry.ts';
@@ -14,7 +14,7 @@ import { recoveredControllerClosure } from '../live/recovered-closure.ts';
 import { bridgeDisclosure } from '../live/bridge-disclosure.ts';
 
 test('OFFLINE recovered disclosure: authoritative closure permits only unsent abandoned calls, not invented completion', async t => {
-  const f = setup(t), store = f.store(); migrateV4(store);
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
   const child = spawn(process.execPath, ['-e', ''], { detached: true, env: {}, stdio: 'ignore' }); await once(child, 'exit');
   const requests = new RequestStore(store), request = requests.accept(normalize(fixture(), f.c, 'local:codex')).request;
   requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'interrupted');

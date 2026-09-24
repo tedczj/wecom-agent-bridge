@@ -12,7 +12,6 @@ import { identityMeter } from './identity-meter.ts';
 import { nativeContextAudit } from './native-context.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -23,7 +22,7 @@ export async function runScopeCase(base: Config, test: LiveCase, attempt: number
   let failure: string | undefined, cleanupConfirmed = false;
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    const before = fixture.gitState(), ids: string[] = [], setupIds: string[] = [];
+    const ids: string[] = [], setupIds: string[] = [];
     // These are two host-chosen trusted local route targets. Text such as
     // "scope A" does not supply actor/scope authority to the normalizer.
     for (const session of ['fixture-A', 'fixture-B']) {
@@ -74,14 +73,11 @@ export async function runScopeCase(base: Config, test: LiveCase, attempt: number
     observe('permissionScopeValid', inputs.every(input => input.routing?.directory.path === path.join(fixture.projectRoot, 'term4u')) && c.codex.sandbox === 'read-only' && !c.codex.networkAccess,
       { scopes, sandbox: c.codex.sandbox, networkAccess: c.codex.networkAccess, basis: 'configured host authorization, not OS-isolation proof' });
     const disclosure = bridgeDisclosure(service.store, allIds), replay = replayEvidence(service.store, workJobs.map(job => job.task_id));
-    const remote = remoteWriteEvidence(service.store, allIds, native, before, fixture.gitState());
     if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
     fixture.save('scope-bindings.json', { setupRequestIds: setupIds, caseRequestIds: ids, scopes, controllers: controllers.map(row => ({ role: row.role, scope: row.conversation_scope, key: row.logical_key, nativeRefHash: sha256(row.native_ref_json as string) })), businessRefHashes: refs.map(ref => sha256(ref!)) });
     fixture.save('history-results.json', { scope: scopes[1], entries: page.map(row => ({ requestId: row.requestId, querySha256: sha256(row.query), shortTextSha256: sha256(row.shortText) })), native });
     fixture.save('denied-read.json', { code: denied, answerRef: answer.answer_id, readerScope: scopes[1], identityDenials: denials, ingressRejection: spoof.rejected });
-    fixture.save('remote-write-audit.json', remote);
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }
   finally {
     try { await fixture.close(); cleanupConfirmed = true; } catch (error) { failure = errorCode(error, 'LIVE_CLEANUP_FAILED'); }

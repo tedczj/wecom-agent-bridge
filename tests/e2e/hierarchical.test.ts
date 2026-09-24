@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { setup, fixture, FakeChannel, eventually } from '../helpers.ts';
 import { parseConfig } from '../../src/config.ts';
 import { Store } from '../../src/store.ts';
-import { migrateV4 } from '../../src/migrations/v4.ts';
+import { initializeHierarchy } from '../../src/orchestration/schema.ts';
 import { ControllerManager } from '../../src/controllers/manager.ts';
 import type { ControllerRuntime, ControllerRef, ControllerToolHandler, ControllerTurn } from '../../src/controllers/runtime.ts';
 import { BusinessSessions } from '../../src/orchestration/business-sessions.ts';
@@ -37,7 +37,7 @@ async function harness(t: TestContext, directoryModel?: Partial<ReturnType<typeo
     models: { daily: { model: 'gpt-6-sol', reasoning: 'medium', contextWindowTokens: 1000000 }, alternate: { model: 'gpt-6-sol', reasoning: 'high', contextWindowTokens: 1000000 } }, orchestration: example.orchestration,
     routing: { roots: [{ id: 'all', path: f.root, profile: 'read' }], profiles: [{ id: 'read', version: '1', codex: directoryModel }], workspaces: [
       { id: 'test', path: f.workspace, profile: 'read', aliases: ['A'] }, { id: 'second', path: second, profile: 'read', aliases: ['B'] }], history: true } });
-  const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c); migrateV4(store); f.cleanups.push(() => store.close());
+  const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c); initializeHierarchy(store); f.cleanups.push(() => store.close());
   const controllerInputs: Array<{ role: string; ref: string; text: string; images: readonly ImageRef[] }> = [], parents: unknown[] = [], searches: unknown[] = [];
   class ControllerDouble implements ControllerRuntime {
     ref!: ControllerRef; instructions = ''; turn = 0;

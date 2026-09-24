@@ -6,7 +6,7 @@
 
 ## 三层模式实现状态
 
-工作树已接入可选 `orchestration.mode=hierarchical`：Bridge/Route 管理会话、原文转发、原件与摘要分离、显式 v4 迁移，以及用量/80% 换代日志。[独立 runtime 兼容候选](docs/THREE_LAYER_RUNTIME_COMPATIBILITY.md) 已通过 `gpt-6-sol / medium` 的真实 M0，完整三层 live 与故障验收仍未完成，生产模式未切换。实现范围与实际证据见 [三层实现状态](docs/THREE_LAYER_IMPLEMENTATION_STATUS.md)，迁移入口见 [迁移说明](docs/THREE_LAYER_MIGRATION.md)。
+工作树已接入可选 `orchestration.mode=hierarchical`：Bridge/Route 管理会话、原文转发、原件与摘要分离，以及用量/80% 换代日志。[独立 runtime 兼容候选](docs/THREE_LAYER_RUNTIME_COMPATIBILITY.md) 已通过 `gpt-6-sol / medium` 的真实 M0，完整三层 live 与故障验收仍未完成，生产模式未切换。实现范围与实际证据见 [三层实现状态](docs/THREE_LAYER_IMPLEMENTATION_STATUS.md)。三层模式仅初始化空状态或打开已有 v4 库，不提供数据迁移。
 
 三层模式不拼接历史 query/reply 或复制历史图片。模型、推理强度、上下文窗口逐字段记录配置来源；业务覆盖不改管理模型。`/debug [requestId]` 只读已保存的请求、执行、摘要和投递状态，不扫描原生历史。配置窗口是请求值，不等于服务端实际能力；真实 1M/80% 长测按用户要求暂缓。
 
@@ -117,7 +117,7 @@ CODEX_HOME=/your/codex-home codex login
 
 也可以把配置指向已有登录目录。不要提交该目录的配置或凭据。若使用 API key，仅通过本机环境提供，并在 `agent.passEnv` 显式列出支持的变量。Bridge 不加载 `.env`，也不把整个父进程环境传给 Agent。
 
-微信与本地模式必须使用独立 `stateRoot`。旧版 v1 数据库会被拒绝，不自动迁移或重放。工作目录、账号身份及后端会话目录与状态绑定，不能随意更换后继续使用原数据库。
+微信与本地模式必须使用独立 `stateRoot`。旧版 v1/v2 数据库会被拒绝，不自动迁移或重放。工作目录、账号身份及后端会话目录与状态绑定，不能随意更换后继续使用原数据库。
 
 Pi 的本地配置参考 [config.pi.example.json](config.pi.example.json)。Pi 必须已有经过验证的外部隔离，才能把 `agent.isolation` 设为 `external`；更改该字段本身不提供隔离。
 

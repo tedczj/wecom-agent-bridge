@@ -12,8 +12,6 @@ import { isolatedBusinessHome } from './isolated-home.ts';
 import { liveFixture } from './fixture.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
 import { replayEvidence } from './replay.ts';
-import { nativeContextAudit } from './native-context.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -30,7 +28,7 @@ export async function runLargeHistoryCase(base: Config, test: LiveCase, attempt:
   const observations: Record<string, { pass: boolean; actual: unknown }> = {};
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    fixture = await liveFixture(isolated.config, output); const { service, c } = fixture, beforeGit = fixture.gitState();
+    fixture = await liveFixture(isolated.config, output); const { service, c } = fixture;
     const first = await service.accept({ id: randomUUID(), session: 'fixture', text: `在 term4u 记住本会话校验词 ${randomUUID()}。只回复“已记住”，不要使用工具或修改文件。`, images: [] });
     invariant(first.taskId && !first.rejected, 'LIVE_SETUP_REJECTED'); await service.settle();
     const before = service.store.get(first.taskId); invariant(before.kind === 'agent' && before.status === 'succeeded', 'LIVE_SETUP_INCOMPLETE');
@@ -68,10 +66,6 @@ export async function runLargeHistoryCase(base: Config, test: LiveCase, attempt:
     if (replay.complete) observe('noBusinessReplayAfterUncertain', replay.pass, replay.actual);
     // Keep post-run evidence collection separate from the observed resume reads.
     NativeReader.prototype.inspect = inspect; NativeCatalog.prototype.locateExact = locate;
-    const native = await nativeContextAudit(service.store, c, job, 'unused-remote-audit-marker');
-    const remote = remoteWriteEvidence(service.store, ids, [native], beforeGit, fixture.gitState());
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
-    fixture.save('remote-write-audit.json', remote);
     fixture.save('fixture-history-manifest.json', { syntheticHistory: true, bytesInOneLine: Buffer.byteLength(largeLine), fileSha256: sha256(header + '\n' + largeLine + '\n'), realSessionRefSha256: sha256(JSON.stringify(ref)) });
     fixture.save('file-read-audit.json', { reads, lookups }); fixture.save('resume-result.json', { jobId: id, status: job.status, errorCode: job.error_code });
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }

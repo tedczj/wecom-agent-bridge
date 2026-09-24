@@ -1,20 +1,14 @@
 # 当前验证记录：三层实现进行中
 
-## 本次阶段提交检查（2026-09-24）
+## 本次清理检查（2026-09-24）
 
-按用户要求先提交并推送当前实现；完整 live 验收仍未完成，剩余项见三层实现状态。
+按用户要求删除完整解析审计工具和数据迁移代码。保留直接断言、证据导出、报告校验、空状态建库及已有 v3/v4 对应模式读取。设计包与原 58 验收 ID 保留；LIVE-24 迁移实现已移除，编号保留并返回 `DATA_MIGRATION_REMOVED`；远端写入全局断言缺证据仍为 BLOCKED。
 
-- Node 24.15.0 / npm 11.12.1；npm ci 成功，按 lockfile 安装。npm 报告 1 high vulnerability 及测试依赖 mvdan-sh 的弃用提示，未自动升级。
-- 提交前首次检查因新测试直接导入 Node SQLite backup API 而不兼容固定的 @types/node 22 失败；沿用已有迁移模块的类型兼容方式修复后，npm run check **422/422 PASS**，无 skipped/cancelled。
-- 新增测试为 OFFLINE：协议 double、文件/SQLite、进程和合成输入检查，不等于真实模型、微信投递或 OS 隔离验收。
-- [脱敏检查摘要](evidence/three-layer-offline-verification.txt)；完整本地日志保留在忽略的 runtime/three-layer/precommit-check-fixed.txt。
-
-
-当前为按用户要求先行提交的实现阶段，完整发布验收尚未完成。最新离线计数、真实模型探测与剩余差距统一记录于 [三层实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。`npm ci` 已成功；新增测试为 OFFLINE doubles/本地文件与 SQLite 检查，不代表真实 Agent、视觉语义、微信投递或 OS 隔离。
-
-独立兼容候选已通过真实 `gpt-6-sol / medium` 的 M0，详见 [runtime 兼容证据](THREE_LAYER_RUNTIME_COMPATIBILITY.md)。原先 57 个 BLOCKED attempt 未执行模型场景；随后首次三层 live 已进入业务执行并暴露 exec 重连诊断兼容问题，该轮保留 FAIL，修复后的新适配器探针已成功，完整三层 live 尚未验收。当前 LIVE-03/04、LIVE-05、LIVE-06、LIVE-09、LIVE-12、LIVE-20、LIVE-29 各三次已有完整补审/重算 PASS，LIVE-10、LIVE-13、LIVE-15、LIVE-19、LIVE-21、LIVE-22、LIVE-23、LIVE-30 各三次 PASS；它们均是对应候选和普通窗口的证据。此前离线全量为 421/421，更多用例与实际限制见实现状态。LIVE-26/27 真实 1M/80% 长测按用户要求暂缓，LIVE-W01/W02 尚未进行手机验收。
-
-公开文档保留原 58 验收 ID，新增离线范围见 [测试矩阵](TEST_MATRIX.md)。旧源码 manifest 和下方历史 live 摘录属于此前候选版本，不证明当前工作树；最终发布前需重新生成并检查候选文件。私有证据留在被忽略的 `runtime/three-layer/`。
+- `npm ci --no-audit --no-fund` 成功，按 lockfile 安装；已移除 mvdan-sh，未执行依赖升级或 npm audit。
+- 解析审计清理后检查 **393/393 PASS**。首次类型检查发现证据导出的残留引用，修正后通过，初始日志保留。
+- 数据迁移清理后 `npm run check` **392/392 PASS**，0 failed/cancelled/skipped；详见 [脱敏检查摘要](evidence/three-layer-offline-verification.txt)；完整日志在忽略的 runtime/cleanup-check.txt。
+- 本次均为 OFFLINE 检查，没有运行 live LLM 或微信消息测试，不代表完整 live 验收。
+- [源码 SHA-256 清单](source-manifest.sha256)已按清理后的源码和测试更新。历史 live 证据只对应原候选，不改写为本次结果；详见 [三层实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。
 
 ## 此前验证记录：远程 debug
 

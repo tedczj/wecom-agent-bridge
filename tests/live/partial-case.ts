@@ -12,7 +12,6 @@ import { isolatedBusinessHome } from './isolated-home.ts';
 import { seedPartialCatalog } from './partial-fixture.ts';
 import { liveFixture } from './fixture.ts';
 import { bridgeDisclosure } from './bridge-disclosure.ts';
-import { remoteWriteEvidence } from './remote-writes.ts';
 import { finalizeCase, type AssertionResult, type CaseResult } from './report.ts';
 import type { LiveCase } from './spec.ts';
 
@@ -37,7 +36,7 @@ export async function runPartialCase(base: Config, test: LiveCase, attempt: numb
   const observations: Record<string, { pass: boolean; actual: unknown }> = {};
   const observe = (predicate: string, pass: boolean, actual: unknown) => { observations[predicate] = { pass, actual }; };
   try {
-    fixture = await liveFixture(isolated.config, output); const { service, c } = fixture, before = fixture.gitState();
+    fixture = await liveFixture(isolated.config, output); const { service, c } = fixture;
     const model = c.models![c.orchestration!.business.defaultModelProfile]!, catalog = new Catalog(c), directory = catalog.configured.find(d => d.id === 'term4u')!;
     const target = catalog.target(directory, model), frame = { id: randomUUID(), session: 'fixture', text: test.steps[0]!.detail, images: [] };
     const scope = conversationScope(normalize(frame, c, 'local:codex').route), seed = seedPartialCatalog(c.codex.home, directory.path, model);
@@ -64,9 +63,6 @@ export async function runPartialCase(base: Config, test: LiveCase, attempt: numb
       { isolatedNativeHome: true, sandbox: c.codex.sandbox, businessCalls, basis: 'host fixture scope; not OS isolation' });
     observe('noBusinessReplayAfterUncertain', businessCalls === 0 && !service.store.value('business-prompt-admissions:' + id), { businessCalls, uncertaintyExercised: false });
     const disclosure = bridgeDisclosure(service.store, [id]); if (disclosure.complete) observe('noBridgeRawAnswerDisclosure', disclosure.pass, disclosure.actual);
-    const remote = remoteWriteEvidence(service.store, [id], [], before, fixture.gitState());
-    if (remote.complete) observe('noProductionRemoteWrites', remote.pass, remote.actual);
-    fixture.save('remote-write-audit.json', remote);
     fixture.save('catalog-pages.json', { seed, observedPages: pages }); fixture.save('coverage.json', { discovery, options });
     fixture.save('selection-log.json', { businessCalls, jobs, options });
   } catch (error) { failure = errorCode(error, 'LIVE_CASE_FAILED'); }

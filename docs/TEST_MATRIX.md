@@ -12,7 +12,7 @@
 | B04/B05、R 系列 | `unit/answers` 原件提交/恢复与 recap 失败；管理代际和取消离线覆盖，完整故障矩阵仍未完成 |
 | D 系列、诊断和历史 | `unit/history-*`、`directories`、`tool-audit` 与 `e2e/hierarchical` 的 scope、只读和脱敏检查 |
 | 模型/window 来源 | `unit/orchestration` 逐字段来源；`contract/codex` 固定窗口参数；`contract/pi` prompt 前 window 校验；`e2e/hierarchical` digest 变化不静默续接 |
-| 迁移、维护与 live 报告 | `unit/migration-maintenance`；`unit/maintenance-result` 和 `e2e/hierarchical` 维护原件、重复收尾、启动恢复与 live 重放仪表的离线检查；`unit/live-report` 保留 33 case / 145 assertion / 5 global，锁定预期并校验证据文件/hash，缺证据不得 PASS |
+| 初始化、维护与 live 报告 | `unit/hierarchy-schema` 检查空库初始化与非空库原样拒绝；`unit/maintenance-result` 和 `e2e/hierarchical` 维护原件、重复收尾、启动恢复与 live 重放仪表的离线检查；`unit/live-report` 保留 33 case / 145 assertion / 5 global，锁定预期并校验证据文件/hash，缺证据不得 PASS；LIVE-24 迁移实现已移除，保留设计编号并返回 `DATA_MIGRATION_REMOVED` |
 
 真实 `gpt-6-sol / medium` 只执行了有限能力探测；M0 阻塞，完整三层 live 未通过。LIVE-26/27 真实大上下文测试按用户要求暂缓；LIVE-W01/W02 需手机参与，尚未执行。
 

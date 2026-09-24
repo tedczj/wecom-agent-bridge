@@ -10,6 +10,15 @@ import { Catalog } from '../../src/routing/catalog.ts';
 import { parseRouting } from '../../src/routing/config.ts';
 import { setup, input, eventually } from '../helpers.ts';
 const hooks = {persistSession: async (_ref: SessionRef) => {},progress:()=>{}};
+for (const contextWindowTokens of [1000000, 828400]) test(`OFFLINE Pi window: configured capacity is checked before prompt (${contextWindowTokens})`, async t => {
+ const h = setup(t, 'pi');
+ h.c.routing = parseRouting({ roots: [{ id: 'root', path: h.root, profile: 'pi' }], profiles: [{ id: 'pi', version: '1', backend: 'pi' }], workspaces: [{ id: 'test', path: h.workspace, profile: 'pi' }] });
+ const catalog = new Catalog(h.c), target = catalog.target(catalog.configured[0]!, { model: 'terra', contextWindowTokens });
+ const i = input(); i.routing = { directory: target.directory, digest: target.digest, execution: target.execution, reason: 'window' };
+ const result = await new PiBackend(target.config).run(i, undefined, hooks, new AbortController().signal);
+ if (contextWindowTokens === 1000000) assert.equal(result.outcome, 'success');
+ else { assert.equal(result.errorCode, 'PI_CONTEXT_WINDOW_MISMATCH'); assert.equal(existsSync(path.join(h.c.agent.sessionRoot, 'capture.json')), false); }
+});
 for(const mode of ['normal','clamp-thinking'])test(`Pi execution selection validates actual RPC state before prompt (${mode})`,async t=>{
  const h=setup(t,'pi',mode);
  h.c.routing=parseRouting({roots:[{id:'root',path:h.root,profile:'pi'}],profiles:[{id:'pi',version:'1',backend:'pi'}],workspaces:[{id:'test',path:h.workspace,profile:'pi'}]});

@@ -72,6 +72,7 @@ export class PiBackend implements AgentBackend {
             finalText = blocks.filter(x => x && x.type === 'text' && typeof x.text === 'string').map(x => x.text).join('\n');
             invariant(Buffer.byteLength(finalText) <= this.c.agent.maxFrameBytes, 'PI_OUTPUT_TOO_LARGE');
             stopReason = String(message.stopReason ?? '');
+            if (stopReason !== 'toolUse') hooks.captureFinal?.(finalText);
           }
         } else if (event.type === 'agent_settled' && promptSent) {
           this.settledSeen = true; settledThisTurn = true; resolveSettled();
@@ -105,6 +106,7 @@ export class PiBackend implements AgentBackend {
       const state = record((await withSignal(rpc.request('get_state'), signal)).data); this.idle(state);
       if(selected)invariant(record(state.model).id===selected.id && record(state.model).provider===selected.provider,'PI_MODEL_MISMATCH');
       if(execution?.reasoning)invariant(state.thinkingLevel===execution.reasoning,'PI_REASONING_MISMATCH');
+      if(execution?.contextWindowTokens!==undefined)invariant(record(state.model).contextWindow===execution.contextWindowTokens,'PI_CONTEXT_WINDOW_MISMATCH');
       ref = this.ref(state, !!existing && existing.kind === 'pi' && existing.hasHistory !== false);
       if (existing && existing.kind === 'pi') invariant(ref.sessionFile === existing.sessionFile && ref.sessionId === existing.sessionId, 'SESSION_RESTORE_MISMATCH');
       await hooks.persistSession(ref).catch(() => { throw new BridgeError('SESSION_PERSISTENCE'); });
@@ -118,6 +120,7 @@ export class PiBackend implements AgentBackend {
       }
       if (needsUi) throw new BridgeError('NEEDS_LOCAL_INTERACTION');
       if (signal.aborted) throw new BridgeError('ABORTED');
+      hooks.promptSubmitted?.({ textSha256: createHash('sha256').update(input.text).digest('hex'), attachmentHashes: input.images.map(image => image.sha256) });
       promptSent = true;
       await withSignal(rpc.request('prompt', { message: input.text, images }), signal);
       if (images.length) this.imageBytesSent = true;
@@ -141,6 +144,7 @@ export class PiBackend implements AgentBackend {
       try { await this.stop(); } catch { this.running = false; throw new BackendStateUnknown(); }
       this.running = false;
     }
+    if (result!.outcome === 'success') result!.finishEvidence = { backend: 'pi', agentSettled: true, idle: true, cleanupConfirmed: true };
     return result!;
   }
 }

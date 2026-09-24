@@ -8,6 +8,67 @@ import { CodexBackend,codexArgs } from '../../src/codex.ts';
 import { MediaStore } from '../../src/media.ts';
 import type { RunHooks,SessionRef } from '../../src/types.ts';
 import { setup,input,eventually } from '../helpers.ts';
+import { parseConfig } from '../../src/config.ts';
+import { createBackend } from '../../src/main.ts';
+
+test('OFFLINE Codex model window: validated config reaches exec and explicit resume arguments', t => {
+  const h = setup(t), c = parseConfig({ ...h.c, codex: { ...h.c.codex, contextWindowTokens: 828400 } });
+  for (const saved of [undefined, { kind: 'codex' as const, threadId: randomUUID() }]) {
+    const args = codexArgs(c, [], saved);
+    assert.ok(args.includes('model_context_window=828400'));
+    if (saved) assert.ok(args.indexOf('model_context_window=828400') < args.indexOf('resume'));
+  }
+  for (const value of [0, -1, 1.5, '1000000', Number.MAX_SAFE_INTEGER + 1])
+    assert.throws(() => parseConfig({ ...h.c, codex: { ...h.c.codex, contextWindowTokens: value } }), /CONFIG_NUMBER/);
+});
+test('OFFLINE hierarchical window: real adapter metadata protocol maps usable capacity without mutating configuration or prompt', async t => {
+  const h = setup(t), c = parseConfig({ ...h.c, codex: { ...h.c.codex, model: 'model', contextWindowTokens: 828400 } });
+  writeFileSync(path.join(c.codex.home, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'model', max_context_window: 872000, effective_context_window_percent: 95 }] }));
+  const k = hooks(), windows: unknown[] = []; k.value.contextWindowResolved = value => windows.push(value);
+  const work = input(); work.text = 'unchanged original';
+  const result = await new CodexBackend(c, undefined, undefined, true).run(work, undefined, k.value, new AbortController().signal);
+  assert.equal(result.outcome, 'success'); assert.equal(c.codex.contextWindowTokens, 828400); assert.equal(windows.length, 1);
+  const capture = JSON.parse(readFileSync(path.join(c.codex.home, 'capture.json'), 'utf8'));
+  assert.ok(capture.args.includes('model_context_window=872000')); assert.equal(capture.prompt, work.text);
+  assert.ok(JSON.parse(readFileSync(path.join(c.codex.home, 'metadata-args.json'), 'utf8')).includes(`projects={${JSON.stringify(h.workspace)}={trust_level="untrusted"}}`));
+  assert.equal(existsSync(path.join(c.stateRoot, 'agent-process.json')), false);
+});
+test('OFFLINE hierarchical window: oversized capacity fails before exec; metadata cancellation closes its process', async t => {
+  for (const mode of ['capacity', 'cancel', 'timeout']) {
+    const h = setup(t, 'codex', mode === 'capacity' ? 'normal' : 'metadata-hang'), c = parseConfig({ ...h.c,
+      agent: { ...h.c.agent, ...(mode === 'timeout' ? { taskTimeoutMs: 100 } : {}) }, codex: { ...h.c.codex, model: 'model', contextWindowTokens: 1000000 } });
+    writeFileSync(path.join(c.codex.home, 'models_cache.json'), JSON.stringify({ models: [{ slug: 'model', max_context_window: 872000, effective_context_window_percent: 95 }] }));
+    const abort = new AbortController(), k = hooks(); let submitted = false; k.value.promptSubmitted = () => { submitted = true; };
+    const running = new CodexBackend(c, undefined, undefined, true).run(input(), undefined, k.value, abort.signal);
+    if (mode === 'cancel') { await eventually(() => existsSync(path.join(c.stateRoot, 'agent-process.json'))); abort.abort(); }
+    const result = await running;
+    assert.equal(result.outcome, mode === 'cancel' ? 'cancelled' : 'failed');
+    if (mode !== 'cancel') assert.equal(result.errorCode, mode === 'capacity' ? 'CONTEXT_WINDOW_MISMATCH' : 'CODEX_TASK_TIMEOUT');
+    assert.equal(submitted, false); assert.equal(k.refs.length, 0); assert.equal(existsSync(path.join(c.codex.home, 'capture.json')), false);
+    assert.equal(existsSync(path.join(c.stateRoot, 'agent-process.json')), false);
+  }
+});
+test('OFFLINE hierarchical Codex policy: transient untrusted project prevents implicit trust persistence and uses one TOML argument', t => {
+  const h = setup(t), c = h.c;
+  assert.equal(codexArgs(c, []).some(arg => arg.startsWith('projects=')), false);
+  // Only presence of the already validated hierarchical configuration affects CLI policy.
+  c.orchestration = {} as NonNullable<typeof c.orchestration>;
+  c.workspace.path = '/private/fixture/with "quotes" and spaces';
+  for (const saved of [undefined, { kind: 'codex' as const, threadId: randomUUID() }]) {
+    const args = codexArgs(c, [], saved), policy = `projects={${JSON.stringify(c.workspace.path)}={trust_level="untrusted"}}`;
+    assert.equal(args.filter(arg => arg === policy).length, 1); assert.equal(args[args.indexOf(policy) - 1], '--config');
+    if (saved) assert.ok(args.indexOf(policy) < args.indexOf('resume'));
+    assert.ok(args.includes('approval_policy="never"')); assert.equal(args.includes('--dangerously-bypass-approvals-and-sandbox'), false);
+  }
+});
+test('OFFLINE hierarchical backend factory: project policy reaches the child after management configuration is stripped', async t => {
+  const h = setup(t), backend = createBackend(h.c, new MediaStore(h.c), true);
+  assert.equal(h.c.orchestration, undefined);
+  const result = await backend.run(input(), undefined, hooks().value, new AbortController().signal);
+  assert.equal(result.outcome, 'success'); await backend.stop();
+  const captured = JSON.parse(readFileSync(path.join(h.c.codex.home, 'capture.json'), 'utf8'));
+  assert.ok(captured.args.includes(`projects={${JSON.stringify(h.workspace)}={trust_level="untrusted"}}`));
+});
 function hooks() {
   const refs:SessionRef[]=[],events:string[]=[];
   const value:RunHooks={persistSession:async ref=>{refs.push(ref);},progress:e=>events.push(e.type)};
@@ -69,6 +130,21 @@ test('C08/B04/D08: failed turn and auth failure return codes, never raw error/se
 test('C09/B04: empty final is a failure; reasoning/tool outputs are not answers',async t=>{
   const h=setup(t,'codex','empty'),r=await new CodexBackend(h.c).run(input(),undefined,hooks().value,new AbortController().signal);
   assert.equal(r.outcome,'failed');assert.equal(r.errorCode,'EMPTY_FINAL');assert(!r.finalText.includes('PRIVATE_CHAIN'));
+});
+for (const mode of ['reconnecting','startup-warning']) test(`OFFLINE exec compatibility: ${mode} still requires full same-process completion`, async t => {
+  const h = setup(t, 'codex', mode), k = hooks();
+  const result = await new CodexBackend(h.c).run(input(), undefined, k.value, new AbortController().signal);
+  assert.equal(result.outcome, 'success'); assert.equal(k.refs.length, 1);
+  assert.deepEqual(JSON.parse(result.finalText).history, ['hello']);
+  assert.equal(JSON.stringify(result).includes('FAKE_SECRET'), false);
+  assert.ok(k.events.includes(mode === 'reconnecting' ? 'codex.transport_retry' : 'codex.warning'));
+});
+for (const [mode, code] of [['reconnect-incomplete','CODEX_INCOMPLETE_TURN'],['fatal-midturn','CODEX_EVENT_ORDER'],['rerouted','CODEX_MODEL_REROUTED']])
+test(`OFFLINE exec compatibility: ${mode} cannot become successful`, async t => {
+  const h = setup(t, 'codex', mode);
+  const result = await new CodexBackend(h.c).run(input(), undefined, hooks().value, new AbortController().signal);
+  assert.equal(result.outcome, 'interrupted'); assert.equal(result.errorCode, code);
+  assert.equal(result.finalText.includes('FAKE_SECRET'), false);
 });
 test('C10: resume mismatch blocks, without saving the wrong reference',async t=>{
   const h=setup(t,'codex','wrong-thread'),k=hooks(),saved:SessionRef={kind:'codex',threadId:randomUUID()};

@@ -12,11 +12,13 @@ export interface Incoming {
   media: LocalImage[]; receivedAt: number;
 }
 export interface NormalizedInput {
+  requestId?: string; sourceRequestId?: string; rawQuerySha256?: string;
   taskId: string; messageId: string; route: Route; receivedAt: number;
   text: string; images: ImageRef[]; workspaceId: string; sessionKey: string; generation: number;
   routingDiagnostic?: import('./routing/router.ts').RoutingDiagnostic;
   originalText?: string; attachmentCount?: number; contextTaskIds?: string[];
-  routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string; execution?: import('./routing/execution.ts').Execution; announce?: boolean; authorizedRequestTaskId?: string };
+  routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string; execution?: import('./routing/execution.ts').Execution; announce?: boolean; authorizedRequestTaskId?: string;
+    modelSource?: import('./orchestration/config.ts').ModelSource; modelSources?: import('./orchestration/config.ts').ModelSources; modelProfile?: string };
 }
 export type SessionRef = {
   kind: 'pi'; sessionId: string; sessionFile: string; hasHistory?: boolean;
@@ -25,10 +27,16 @@ export interface AgentResult {
   outcome: 'success' | 'failed' | 'cancelled' | 'interrupted';
   finalText: string; errorCode?: string; sessionRef?: SessionRef;
   execution?: import('./routing/execution.ts').Execution;
+  finishEvidence?: FinishEvidence;
 }
+export type FinishEvidence = { backend: 'codex'; threadStarted: true; turnStarted: true; turnCompleted: true; exitCode: 0; cleanupConfirmed: true }
+  | { backend: 'pi'; agentSettled: true; idle: true; cleanupConfirmed: true };
 export interface RunHooks {
   persistSession(ref: SessionRef): Promise<void>;
   progress(event: { type: string; tool?: string }): void;
+  captureFinal?(text: string): void;
+  promptSubmitted?(audit: { textSha256: string; attachmentHashes: string[] }): void;
+  contextWindowResolved?(audit: import('./codex-window.ts').CodexWindowResolution): void;
 }
 export interface AgentBackend {
   start(): Promise<void>;
@@ -42,6 +50,7 @@ export interface Channel {
 }
 export interface MediaProvider {
   prepare(taskId: string, media: LocalImage[], signal?: AbortSignal): Promise<ImageRef[]>;
+  recoverPreparation?(taskId: string, media: LocalImage[], signal?: AbortSignal): Promise<ImageRef[]>;
   validate(images: ImageRef[]): Promise<void>;
 }
 export type JobStatus = 'preparing' | 'queued' | 'running' | 'cancel_requested' | 'succeeded' | 'failed' | 'cancelled' | 'timed_out' | 'interrupted';

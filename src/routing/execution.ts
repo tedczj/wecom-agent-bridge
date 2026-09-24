@@ -7,13 +7,15 @@ export interface Execution {
   backend?: 'codex' | 'pi';
   model?: string;
   reasoning?: NonNullable<Config['codex']['reasoning']>;
+  contextWindowTokens?: number;
 }
 export function validateExecution(value: unknown): Execution {
   const o=Object.fromEntries(Object.entries(record(value)).filter(([,v])=>v!==null));
-  invariant(Object.keys(o).every(k=>['backend','model','reasoning'].includes(k)),'EXECUTION_SCHEMA');
+  invariant(Object.keys(o).every(k=>['backend','model','reasoning','contextWindowTokens'].includes(k)),'EXECUTION_SCHEMA');
   invariant(o.backend===undefined || ['codex','pi'].includes(String(o.backend)),'EXECUTION_BACKEND');
   invariant(o.model===undefined || typeof o.model==='string' && /^[a-zA-Z0-9][a-zA-Z0-9 ._:/-]{0,127}$/.test(o.model),'EXECUTION_MODEL');
   invariant(o.reasoning===undefined || ['minimal','low','medium','high','xhigh'].includes(String(o.reasoning)),'EXECUTION_REASONING');
+  invariant(o.contextWindowTokens===undefined || typeof o.contextWindowTokens==='number' && Number.isSafeInteger(o.contextWindowTokens) && o.contextWindowTokens>0,'EXECUTION_CONTEXT_WINDOW');
   return o as Execution;
 }
 export function availableModels(c: Config): string[] {

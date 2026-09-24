@@ -74,6 +74,13 @@ export function review(c: Config, acknowledged: boolean): number {
       rmSync(marker);
     }
     if(existsSync(routerRoot))clearStaleLock(routerRoot);
+    const recoveryGuard = path.join(c.stateRoot, 'startup-recovery.lock');
+    if (existsSync(recoveryGuard)) {
+      invariant(!lstatSync(recoveryGuard).isSymbolicLink(), 'UNSAFE_LOCK');
+      const data = JSON.parse(readFileSync(recoveryGuard, 'utf8'));
+      invariant(Number.isSafeInteger(data.pid) && data.pid > 0 && !processAlive(data.pid), 'INSTANCE_RUNNING');
+      rmSync(recoveryGuard);
+    }
     const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c);
     try {
       store.recover();

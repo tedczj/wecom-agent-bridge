@@ -25,7 +25,7 @@ export function normalize(frame: unknown, c: Config, channelId: string): Incomin
   // Commands cannot smuggle ignored attachments into the control path.
   invariant(!f.text.trim().startsWith('/') || media.length === 0, 'COMMAND_IMAGES');
   const route: Route = { channelId, kind: 'local', targetId: session, senderId: c.local.actorId };
-  return { messageId, route, reqId: messageId, text: f.text.trim() || '请分析这张图片', media, receivedAt: Date.now() };
+  return { messageId, route, reqId: messageId, text: c.orchestration ? f.text : f.text.trim() || '请分析这张图片', media, receivedAt: Date.now() };
 }
 export class LocalChannel implements Channel {
   ready = true;

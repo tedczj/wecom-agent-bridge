@@ -35,21 +35,25 @@ export interface Selection {
   sessionKey?: string; fresh?: boolean; bind?: boolean; ref?: SessionRef; lastResponseAt?: number | null;
   execution?: import('./routing/execution.ts').Execution; contextTaskIds?: string[]; announce?: boolean;
   authorizedRequestTaskId?: string;
+  modelSource?: import('./orchestration/config.ts').ModelSource; modelSources?: import('./orchestration/config.ts').ModelSources; modelProfile?: string;
 }
 export class Store {
   readonly db: DatabaseSync; private depth = 0;
-  constructor(file: string, private c: Config, readOnly = false) {
+  constructor(file: string, private c: Config, readOnly: boolean | 'maintenance' = false) {
+    if (readOnly === 'maintenance') invariant(file !== ':memory:' && existsSync(file), 'STATE_NOT_INITIALIZED');
     if (file !== ':memory:') for (const name of [file, file + '-wal', file + '-shm']) if (existsSync(name)) invariant(!lstatSync(name).isSymbolicLink(), 'UNSAFE_DB_PATH');
-    this.db = new DatabaseSync(file, { readOnly });
+    this.db = new DatabaseSync(file, { readOnly: readOnly === true });
     try {
       const version = (this.db.prepare('PRAGMA user_version').get() as {user_version: number}).user_version;
       // No implicit migration/replay of historical network-origin tasks. Keep the old database untouched.
-      invariant(version === 0 || version === 2 || version === 3, version === 1 ? 'LEGACY_STATE_REQUIRES_NEW_ROOT' : 'SCHEMA_TOO_NEW');
+      invariant(version === 0 || version === 2 || version === 3 || version === 4, version === 1 ? 'LEGACY_STATE_REQUIRES_NEW_ROOT' : 'SCHEMA_TOO_NEW');
+      invariant(version !== 4 || readOnly === true || c.orchestration, 'V4_REQUIRES_HIERARCHICAL');
       this.db.exec('PRAGMA busy_timeout=5000;');
       if (readOnly) {
-        invariant(version === 2 || version === 3, 'STATE_NOT_INITIALIZED');
+        invariant(version === 2 || version === 3 || version === 4, 'STATE_NOT_INITIALIZED');
         const identity = this.db.prepare("SELECT value FROM metadata WHERE key='identity'").get() as {value: string} | undefined;
         invariant(identity?.value === JSON.stringify([c.workspace.id, c.workspace.path, c.local.actorId]), 'STATE_IDENTITY_MISMATCH');
+        if (readOnly === 'maintenance') this.db.exec('PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;');
         return;
       }
       this.db.exec('PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;');
@@ -65,7 +69,7 @@ export class Store {
         const priorHome = this.db.prepare('SELECT value FROM metadata WHERE key=?').get(homeKey) as {value: string} | undefined;
         invariant(!priorHome || priorHome.value === home, 'STATE_BACKEND_HOME_MISMATCH');
         this.db.prepare('INSERT OR IGNORE INTO metadata(key,value) VALUES (?,?)').run(homeKey, home);
-        this.db.exec('PRAGMA user_version=3;');
+        if (version !== 4) this.db.exec('PRAGMA user_version=3;');
       });
       if (file !== ':memory:') for (const name of [file, file + '-wal', file + '-shm']) if (existsSync(name)) chmodSync(name, 0o600);
     } catch (e) { this.db.close(); throw e; }
@@ -108,8 +112,9 @@ export class Store {
   recent(route: Incoming['route'], since: number): Job[] {
     return (this.db.prepare("SELECT * FROM jobs WHERE channel_id=? AND json_extract(route_json,'$.kind')=? AND json_extract(route_json,'$.targetId')=? AND json_extract(route_json,'$.senderId')=? AND created_at>=? ORDER BY seq DESC LIMIT 6").all(route.channelId,route.kind,route.targetId,route.senderId,since) as unknown as Job[]).reverse();
   }
-  reserve(incoming: Incoming, kind: 'agent' | 'command', selection?: Selection): {job: Job; duplicate: boolean} {
+  reserve(incoming: Incoming, kind: 'agent' | 'command', selection?: Selection, requestId?: string): {job: Job; duplicate: boolean} {
     return this.atomic(() => {
+      invariant(requestId === undefined || /^[0-9a-f]{8}-[0-9a-f-]{27}$/.test(requestId), 'REQUEST_ID_INVALID');
       const digest = createHash('sha256').update(JSON.stringify([incoming.route, incoming.text, incoming.media])).digest('hex');
       const duplicate = this.db.prepare('SELECT * FROM jobs WHERE channel_id=? AND message_id=?').get(incoming.route.channelId, incoming.messageId) as (Job & {request_hash: string}) | undefined;
       if (duplicate) { invariant(duplicate.request_hash === digest, 'REQUEST_ID_CONFLICT'); return { job: duplicate, duplicate: true }; }
@@ -129,15 +134,46 @@ export class Store {
         else if (kind === 'agent') this.put('explicit:' + base,null);
       }
       if (kind === 'agent') {
-        invariant(!maintenanceActive(this.value<Maintenance>('maintenance')),'MAINTENANCE_DRAINING');
+        const maintenance = this.value<Maintenance>('maintenance');
+        const alreadyAccepted = requestId && this.c.orchestration && maintenance && this.db.prepare(`SELECT 1 FROM orchestration_requests earlier
+          JOIN orchestration_requests approval ON approval.request_id=? WHERE earlier.request_id=? AND earlier.ingress_seq<approval.ingress_seq`).get(maintenance.taskId, requestId);
+        invariant(!maintenanceActive(maintenance) || alreadyAccepted,'MAINTENANCE_DRAINING');
         invariant(!this.blocked(), 'WORKSPACE_BLOCKED'); invariant(session.state !== 'tainted', 'SESSION_TAINTED');
         const n = this.db.prepare("SELECT count(*) n FROM jobs WHERE kind='agent' AND status IN ('preparing','queued')").get() as {n: number};
         const own = this.db.prepare("SELECT count(*) n FROM jobs WHERE session_key=? AND kind='agent' AND status IN ('preparing','queued')").get(session.session_key) as {n: number};
         invariant(n.n < this.c.queue.maxPendingGlobal && own.n < this.c.queue.maxPendingPerSession, 'QUEUE_FULL');
       }
-      const input: NormalizedInput = { taskId: randomUUID(), messageId: incoming.messageId, route: incoming.route, receivedAt: incoming.receivedAt, text: incoming.text, images: [], attachmentCount:incoming.media.length, contextTaskIds:selection?.contextTaskIds, workspaceId: config.workspace.id, routing: selection ? {directory:selection.directory,digest:selection.digest,reason:selection.reason,execution:selection.execution,announce:selection.announce,authorizedRequestTaskId:selection.authorizedRequestTaskId} : undefined, sessionKey: session.session_key, generation: session.generation };
+      const input: NormalizedInput = { taskId: requestId ?? randomUUID(), messageId: incoming.messageId, route: incoming.route, receivedAt: incoming.receivedAt, text: incoming.text, images: [], attachmentCount:incoming.media.length, contextTaskIds:selection?.contextTaskIds, workspaceId: config.workspace.id, routing: selection ? {directory:selection.directory,digest:selection.digest,reason:selection.reason,execution:selection.execution,announce:selection.announce,authorizedRequestTaskId:selection.authorizedRequestTaskId} : undefined, sessionKey: session.session_key, generation: session.generation };
       this.db.prepare('INSERT INTO jobs(task_id,channel_id,message_id,request_hash,kind,session_key,route_json,input_json,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)').run(input.taskId, incoming.route.channelId, incoming.messageId, digest, kind, session.session_key, JSON.stringify(incoming.route), JSON.stringify(input), kind === 'agent' ? 'preparing' : 'queued', Date.now());
+      if (selection?.modelSource && input.routing) {
+        input.routing.modelSource = selection.modelSource; input.routing.modelSources = selection.modelSources; input.routing.modelProfile = selection.modelProfile;
+        this.db.prepare('UPDATE jobs SET input_json=? WHERE task_id=?').run(JSON.stringify(input), input.taskId);
+      }
       return { job: this.get(input.taskId), duplicate: false };
+    });
+  }
+  reserveWithRequest(requestId: string, scope: string, selection: Selection): Job {
+    return this.atomic(() => {
+      invariant(!selection.contextTaskIds?.length && !selection.authorizedRequestTaskId, 'VERBATIM_CONTRACT_CONFLICT');
+      const request = this.db.prepare('SELECT * FROM orchestration_requests WHERE request_id=? AND conversation_scope=?').get(requestId, scope) as import('./orchestration/requests.ts').OriginalRequest | undefined;
+      invariant(request && request.hash_version === 'raw-v4', 'REQUEST_NOT_FOUND');
+      if (request.job_task_id) return this.get(request.job_task_id);
+      invariant(request.phase === 'route_planning', 'REQUEST_PHASE_CONFLICT');
+      const source = request.source_request_id ? this.db.prepare('SELECT * FROM orchestration_requests WHERE request_id=? AND conversation_scope=?').get(request.source_request_id, scope) as import('./orchestration/requests.ts').OriginalRequest | undefined : request;
+      invariant(source && (!source.job_task_id || request.source_request_id && this.get(source.job_task_id).kind === 'command') && source.hash_version === 'raw-v4', 'SOURCE_REQUEST_NOT_PENDING');
+      invariant(createHash('sha256').update(source.raw_query).digest('hex') === source.raw_query_sha256, 'REQUEST_HASH_MISMATCH');
+      invariant(!this.db.prepare('SELECT 1 FROM orchestration_requests WHERE source_request_id=? AND job_task_id IS NOT NULL').get(source.request_id), 'DUPLICATE_BUSINESS_SUBMIT');
+      const incoming: Incoming = { messageId: (this.db.prepare('SELECT message_id FROM orchestration_requests WHERE request_id=?').get(requestId) as { message_id: string }).message_id,
+        reqId: requestId, route: JSON.parse(request.route_json), text: source.raw_query, media: JSON.parse(source.attachments_json), receivedAt: request.received_at };
+      // Hierarchical bindings have one authority; legacy binding:* values are audit-only.
+      const result = this.reserve(incoming, 'agent', { ...selection, bind: false }, requestId);
+      invariant(!result.duplicate && result.job.task_id === requestId, 'REQUEST_JOB_CONFLICT');
+      const input: NormalizedInput = JSON.parse(result.job.input_json);
+      input.requestId = requestId; input.sourceRequestId = source.request_id; input.rawQuerySha256 = source.raw_query_sha256;
+      this.db.prepare('UPDATE jobs SET request_hash=?,input_json=? WHERE task_id=?').run(request.request_hash, JSON.stringify(input), requestId);
+      invariant(this.db.prepare("UPDATE orchestration_requests SET job_task_id=?,phase='awaiting_business',updated_at=? WHERE request_id=? AND job_task_id IS NULL")
+        .run(requestId, Date.now(), requestId).changes === 1, 'DUPLICATE_BUSINESS_SUBMIT');
+      return this.get(requestId);
     });
   }
   prepared(taskId: string, images: ImageRef[]): boolean {
@@ -159,7 +195,9 @@ export class Store {
   claim(): Job | undefined {
     return this.atomic(() => {
       if (this.blocked() || this.db.prepare("SELECT 1 FROM jobs WHERE status IN ('running','cancel_requested') LIMIT 1").get()) return;
-      const next = this.db.prepare("SELECT j.* FROM jobs j WHERE j.kind='agent' AND j.status='queued' AND NOT EXISTS (SELECT 1 FROM jobs p WHERE (p.session_key=j.session_key OR json_extract(j.input_json,'$.routing') IS NOT NULL) AND p.seq<j.seq AND p.status IN ('preparing','queued','running','cancel_requested')) ORDER BY j.seq LIMIT 1").get() as Job | undefined;
+      const rootFifo = this.c.orchestration ? ` AND NOT EXISTS (SELECT 1 FROM orchestration_requests prior JOIN orchestration_requests current ON current.job_task_id=j.task_id
+        WHERE prior.ingress_seq<current.ingress_seq AND prior.phase NOT IN ('completed','failed','cancelled','interrupted'))` : '';
+      const next = this.db.prepare("SELECT j.* FROM jobs j WHERE j.kind='agent' AND j.status='queued' AND NOT EXISTS (SELECT 1 FROM jobs p WHERE (p.session_key=j.session_key OR json_extract(j.input_json,'$.routing') IS NOT NULL) AND p.seq<j.seq AND p.status IN ('preparing','queued','running','cancel_requested'))" + rootFifo + " ORDER BY j.seq LIMIT 1").get() as Job | undefined;
       if (!next) return;
       this.db.prepare("UPDATE jobs SET status='running',started_at=? WHERE task_id=? AND status='queued'").run(Date.now(), next.task_id); return this.get(next.task_id);
     });
@@ -170,21 +208,43 @@ export class Store {
     invariant(owner.backend === ref.kind, 'SESSION_BACKEND_MISMATCH');
     this.db.prepare("UPDATE sessions SET agent_ref_json=?,state='ready',updated_at=? WHERE session_key=?").run(JSON.stringify(ref), Date.now(), key);
   }
-  complete(taskId: string, status: JobStatus, text: string, code?: string, expected: JobStatus[] = ['running','cancel_requested','preparing','queued'], directParts?: string[], purpose?:string): boolean {
+  complete(taskId: string, status: JobStatus, text: string, code?: string, expected: JobStatus[] = ['running','cancel_requested','preparing','queued'], directParts?: string[], purpose?:string, artifactAnswerId?: string, completionTime?: number): boolean {
     invariant(['succeeded','failed','cancelled','timed_out','interrupted'].includes(status), 'INVALID_TERMINAL');
     return this.atomic(() => {
       const job = this.get(taskId); if (!expected.includes(job.status)) return false;
+      const finishedAt = completionTime ?? Date.now(); invariant(Number.isSafeInteger(finishedAt) && finishedAt > 0, 'INVALID_COMPLETION_TIME');
+      if (artifactAnswerId) {
+        const artifact = this.db.prepare("SELECT sha256,bytes FROM answer_artifacts WHERE answer_id=? AND job_task_id=? AND state='ready' AND completeness='complete' AND kind='final'")
+          .get(artifactAnswerId, taskId) as { sha256: string; bytes: number } | undefined;
+        invariant(artifact && artifact.sha256 === createHash('sha256').update(text).digest('hex') && artifact.bytes === Buffer.byteLength(text) &&
+          (job.kind === 'agent' ? status === 'succeeded' && job.status === 'running' : job.status === 'queued'), 'ANSWER_DELIVERY_UNVERIFIED');
+      }
       if (job.status === 'cancel_requested' && status === 'succeeded') { status = 'cancelled'; text = '任务已取消；可能已经产生部分代码修改，请检查工作目录。'; }
       const bounded = boundedResult(text, this.c.reply.maxResultBytes);
-      this.db.prepare('UPDATE jobs SET status=?,result_text=?,error_code=?,finished_at=? WHERE task_id=?').run(status, bounded.text, bounded.truncated ? 'OUTPUT_TRUNCATED' : code ?? null, Date.now(), taskId);
-      if (status === 'succeeded' && job.kind === 'agent' && text.trim()) this.db.prepare('UPDATE sessions SET last_response_at=? WHERE session_key=?').run(Date.now(),job.session_key);
+      this.db.prepare('UPDATE jobs SET status=?,result_text=?,error_code=?,finished_at=? WHERE task_id=?').run(status, bounded.text, bounded.truncated && !artifactAnswerId ? 'OUTPUT_TRUNCATED' : code ?? null, finishedAt, taskId);
+      if (status === 'succeeded' && job.kind === 'agent' && text.trim()) this.db.prepare('UPDATE sessions SET last_response_at=? WHERE session_key=?').run(finishedAt,job.session_key);
       if (status === 'interrupted') this.db.prepare("UPDATE sessions SET state='tainted' WHERE session_key=?").run(job.session_key);
       if (directParts) invariant(job.kind === 'command' && directParts.every(p => Buffer.byteLength(p) <= this.c.reply.chunkBytes), 'REPLY_TOO_LARGE');
-      const pieces = directParts ?? resultParts(taskId, bounded.text, this.c.reply.chunkBytes);
-      for (const [i, piece] of pieces.slice(0, this.c.reply.maxAutoParts).entries())
+      const pieces = directParts ?? resultParts(taskId, artifactAnswerId ? text : bounded.text, this.c.reply.chunkBytes);
+      const automatic = pieces.slice(0, this.c.reply.maxAutoParts);
+      if (artifactAnswerId) {
+        const partial = pieces.length > this.c.reply.maxAutoParts;
+        if (partial) {
+          const rawParts = Math.max(0, this.c.reply.maxAutoParts - 1);
+          automatic.splice(rawParts, automatic.length - rawParts, `原件已完整归档；另有 ${pieces.length - rawParts} 段未自动发送。\n/result ${taskId.slice(0, 8)} ${rawParts + 1}`);
+          invariant(automatic.every(piece => Buffer.byteLength(piece) <= this.c.reply.chunkBytes), 'REPLY_TOO_LARGE');
+        }
+        this.put('artifact-delivery:' + taskId, { answerId: artifactAnswerId, totalParts: pieces.length, automaticRawParts: partial ? Math.max(0, this.c.reply.maxAutoParts - 1) : pieces.length, partial });
+      }
+      for (const [i, piece] of automatic.entries())
         this.db.prepare("INSERT INTO outbox(delivery_id,task_id,purpose,part_no,target_json,body_json,state,created_at) VALUES (?,?,?,?,?,?,'pending',?)").run(randomUUID(), taskId, purpose ?? (job.kind === 'command' ? 'control' : 'final'), i + 1, job.route_json, JSON.stringify({ text: piece }), Date.now());
       return true;
     });
+  }
+  completeArtifact(taskId: string, answerId: string, rawFinal: string, status?: JobStatus, code?: string, directParts?: string[], purpose?: string): boolean {
+    const row = this.db.prepare("SELECT json_extract(finish_evidence_json,'$.completedAt') completed_at,json_extract(finish_evidence_json,'$.outcome') outcome,json_extract(finish_evidence_json,'$.errorCode') error_code FROM answer_artifacts WHERE answer_id=? AND job_task_id=?").get(answerId, taskId) as { completed_at: number; outcome: JobStatus | null; error_code: string | null } | undefined;
+    invariant(row && Number.isSafeInteger(row.completed_at) && row.completed_at > 0, 'ANSWER_RECOVERY_TIME_UNVERIFIED');
+    return this.complete(taskId, status ?? row.outcome ?? 'succeeded', rawFinal, code ?? row.error_code ?? undefined, ['running', 'queued'], directParts, purpose, answerId, row.completed_at);
   }
   owned(owner: Job, prefix: string, includeCommands=false): Job {
     invariant(/^(?:[0-9a-f]{8}|[0-9a-f]{8}-[0-9a-f-]{27})$/.test(prefix), 'TASK_ID_INVALID');
@@ -222,7 +282,13 @@ export class Store {
     });
   }
   review(): number { return Number(this.db.prepare("UPDATE jobs SET reviewed_at=? WHERE status='interrupted' AND reviewed_at IS NULL").run(Date.now()).changes); }
-  activeMedia(): Set<string> { return new Set((this.db.prepare("SELECT task_id FROM jobs WHERE status IN ('preparing','queued','running','cancel_requested')").all() as {task_id: string}[]).map(x => x.task_id)); }
+  activeMedia(): Set<string> {
+    const active = new Set((this.db.prepare("SELECT task_id FROM jobs WHERE status IN ('preparing','queued','running','cancel_requested')").all() as {task_id: string}[]).map(x => x.task_id));
+    if (this.c.orchestration) for (const row of this.db.prepare("SELECT request_id,source_request_id FROM orchestration_requests WHERE phase NOT IN ('completed','failed','cancelled','interrupted')").all() as { request_id: string; source_request_id: string | null }[]) {
+      active.add(row.request_id); if (row.source_request_id) active.add(row.source_request_id);
+    }
+    return active;
+  }
   summary(owner?: Job): unknown {
     const where = owner ? ' WHERE s.base_key=?' : '', args = owner ? [this.session(owner.session_key).base_key] : [];
     const jobs = this.db.prepare(`SELECT j.task_id,j.status,j.error_code FROM jobs j JOIN sessions s ON s.session_key=j.session_key${where} ORDER BY j.seq DESC LIMIT 12`).all(...args);

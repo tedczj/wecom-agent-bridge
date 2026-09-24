@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readdir, lstat, writeFile, rename, rm } from 'node:fs/promises';
+import { mkdir, readdir, lstat, writeFile, rename, rm, open } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
 import type { Config } from './config.ts';
@@ -16,6 +16,24 @@ export class MediaStore implements MediaProvider {
   constructor(private c: Config) { this.root = privateDirectory(path.join(c.stateRoot, 'media')); }
   prepare(taskId: string, media: LocalImage[], signal?: AbortSignal): Promise<ImageRef[]> {
     const job = this.tail.then(() => this.prepareSerial(taskId, media, signal));
+    this.tail = job.then(() => {}, () => {}); return job;
+  }
+  /** Only the startup owner may recover a request that has not reached management planning. */
+  recoverPreparation(taskId: string, media: LocalImage[], signal?: AbortSignal): Promise<ImageRef[]> {
+    const job = this.tail.then(async () => {
+      invariant(this.c.orchestration && taskPattern.test(taskId), 'MEDIA_RECOVERY_SCOPE');
+      const dir = path.join(this.root, taskId);
+      try {
+        const manifest = JSON.parse((await readControlled(this.root, path.join(dir, 'manifest.json'), 65536)).toString('utf8'));
+        invariant(manifest.taskId === taskId && manifest.inputHash === createHash('sha256').update(JSON.stringify(media)).digest('hex') && Array.isArray(manifest.images), 'MEDIA_RECOVERY_SCOPE');
+        await this.validate(manifest.images); aborted(signal); return manifest.images as ImageRef[];
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+      try { const stat = await lstat(dir); invariant(stat.isDirectory() && !stat.isSymbolicLink(), 'MEDIA_RECOVERY_SCOPE'); await rm(dir, { recursive: true }); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+      return this.prepareSerial(taskId, media, signal);
+    });
     this.tail = job.then(() => {}, () => {}); return job;
   }
   private async prepareSerial(taskId: string, media: LocalImage[], signal?: AbortSignal): Promise<ImageRef[]> {
@@ -46,6 +64,14 @@ export class MediaStore implements MediaProvider {
         aborted(signal); await rename(file + '.part', file);
         images.push({ id, localPath: file, mimeType: formats[metadata.format], width, height, bytes: bytes.length,
           sha256: createHash('sha256').update(bytes).digest('hex'), source: item.source });
+      }
+      if (this.c.orchestration) {
+        for (const image of images) { const handle = await open(image.localPath, 'r'); try { await handle.sync(); } finally { await handle.close(); } }
+        const manifest = await open(path.join(dir, 'manifest.json.part'), 'wx', 0o600);
+        try { await manifest.writeFile(JSON.stringify({ taskId, inputHash: createHash('sha256').update(JSON.stringify(media)).digest('hex'), images })); await manifest.sync(); }
+        finally { await manifest.close(); }
+        await rename(path.join(dir, 'manifest.json.part'), path.join(dir, 'manifest.json'));
+        const handle = await open(dir, 'r'); try { await handle.sync(); } finally { await handle.close(); }
       }
       return images;
     } catch (e) { if (ownsDir) await rm(dir, { recursive: true, force: true }); throw e; }

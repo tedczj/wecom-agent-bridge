@@ -1,5 +1,23 @@
 # Acceptance and regression matrix
 
+## 三层施工覆盖
+
+下方原 58 ID 表保留既有模式的映射和退役说明，不代表三层模式已经逐项 live 验收。三层新增测试均明确标为 OFFLINE；实际运行计数见 [当前验证](verification.md)，剩余设计差距见 [实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。
+
+| 原 ID 范围 / 新边界 | 三层离线补充 |
+|---|---|
+| N01/N04/N07、Q01 | `unit/orchestration` 原文身份、scope、去重和冲突；`e2e/hierarchical` 三层原文传递 |
+| M01/M09/M10、B01 | `e2e/hierarchical` 当前媒体 hash、后台准备和活动 root 保留；不代替视觉 live |
+| B02/B03/B06、Q 系列 | `unit/business-sessions`、`dispatch`、`controller-manager` 与 `e2e/hierarchical` 会话、FIFO、单次派发和换代 |
+| B04/B05、R 系列 | `unit/answers` 原件提交/恢复与 recap 失败；管理代际和取消离线覆盖，完整故障矩阵仍未完成 |
+| D 系列、诊断和历史 | `unit/history-*`、`directories`、`tool-audit` 与 `e2e/hierarchical` 的 scope、只读和脱敏检查 |
+| 模型/window 来源 | `unit/orchestration` 逐字段来源；`contract/codex` 固定窗口参数；`contract/pi` prompt 前 window 校验；`e2e/hierarchical` digest 变化不静默续接 |
+| 迁移、维护与 live 报告 | `unit/migration-maintenance`；`unit/maintenance-result` 和 `e2e/hierarchical` 维护原件、重复收尾、启动恢复与 live 重放仪表的离线检查；`unit/live-report` 保留 33 case / 145 assertion / 5 global，锁定预期并校验证据文件/hash，缺证据不得 PASS |
+
+真实 `gpt-6-sol / medium` 只执行了有限能力探测；M0 阻塞，完整三层 live 未通过。LIVE-26/27 真实大上下文测试按用户要求暂缓；LIVE-W01/W02 需手机参与，尚未执行。
+
+## 原 58 ID
+
 原 58 个验收 ID 来自基线 `5d882cbbd6906678ca8f0728b3a1b0a14734d361`。下表映射当前本地和个人微信实现，明确标记企微特定行为的退役，不把退役项计为通过。实际用例数与现场验证边界见 [verification.md](verification.md)。
 
 | ID | 原要求 | 当前实现与证据边界 |

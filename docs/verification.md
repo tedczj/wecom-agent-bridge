@@ -1,4 +1,22 @@
-# 当前验证记录：远程 debug
+# 当前验证记录：三层实现进行中
+
+## 本次阶段提交检查（2026-09-24）
+
+按用户要求先提交并推送当前实现；完整 live 验收仍未完成，剩余项见三层实现状态。
+
+- Node 24.15.0 / npm 11.12.1；npm ci 成功，按 lockfile 安装。npm 报告 1 high vulnerability 及测试依赖 mvdan-sh 的弃用提示，未自动升级。
+- 提交前首次检查因新测试直接导入 Node SQLite backup API 而不兼容固定的 @types/node 22 失败；沿用已有迁移模块的类型兼容方式修复后，npm run check **422/422 PASS**，无 skipped/cancelled。
+- 新增测试为 OFFLINE：协议 double、文件/SQLite、进程和合成输入检查，不等于真实模型、微信投递或 OS 隔离验收。
+- [脱敏检查摘要](evidence/three-layer-offline-verification.txt)；完整本地日志保留在忽略的 runtime/three-layer/precommit-check-fixed.txt。
+
+
+当前为按用户要求先行提交的实现阶段，完整发布验收尚未完成。最新离线计数、真实模型探测与剩余差距统一记录于 [三层实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。`npm ci` 已成功；新增测试为 OFFLINE doubles/本地文件与 SQLite 检查，不代表真实 Agent、视觉语义、微信投递或 OS 隔离。
+
+独立兼容候选已通过真实 `gpt-6-sol / medium` 的 M0，详见 [runtime 兼容证据](THREE_LAYER_RUNTIME_COMPATIBILITY.md)。原先 57 个 BLOCKED attempt 未执行模型场景；随后首次三层 live 已进入业务执行并暴露 exec 重连诊断兼容问题，该轮保留 FAIL，修复后的新适配器探针已成功，完整三层 live 尚未验收。当前 LIVE-03/04、LIVE-05、LIVE-06、LIVE-09、LIVE-12、LIVE-20、LIVE-29 各三次已有完整补审/重算 PASS，LIVE-10、LIVE-13、LIVE-15、LIVE-19、LIVE-21、LIVE-22、LIVE-23、LIVE-30 各三次 PASS；它们均是对应候选和普通窗口的证据。此前离线全量为 421/421，更多用例与实际限制见实现状态。LIVE-26/27 真实 1M/80% 长测按用户要求暂缓，LIVE-W01/W02 尚未进行手机验收。
+
+公开文档保留原 58 验收 ID，新增离线范围见 [测试矩阵](TEST_MATRIX.md)。旧源码 manifest 和下方历史 live 摘录属于此前候选版本，不证明当前工作树；最终发布前需重新生成并检查候选文件。私有证据留在被忽略的 `runtime/three-layer/`。
+
+## 此前验证记录：远程 debug
 
 - `npm ci --no-audit --no-fund` exit 0，按 lockfile 安装 16 个包；未升级依赖，未运行 audit。
 - `npm run check` exit 0：类型检查、构建、216 tests，216 passed，0 failed / cancelled / skipped。
@@ -26,7 +44,7 @@
 | 默认启动配置查找 | HOME / XDG 两项隔离启动测试通过，兼容 macOS `sh start.sh` |
 | 微信端新版消息收发 | 现场已记录用户明确授权后的一次任务；兜底修复后服务已重启、有效配置已核对，手机端新任务展示尚未复测 |
 
-[此前组合路由结果摘要](evidence/planner-verification.txt)和[本次交互授权摘要](evidence/authorization-verification.txt)是已执行命令的结果摘录，不是完整控制台日志。[源码 SHA-256 清单](source-manifest.sha256)记录源码/测试输入；当前清单已随 debug 变更刷新。
+[此前组合路由结果摘要](evidence/planner-verification.txt)和[本次交互授权摘要](evidence/authorization-verification.txt)是已执行命令的结果摘录，不是完整控制台日志。[源码 SHA-256 清单](source-manifest.sha256)记录源码/测试输入；当前清单覆盖本阶段源码、测试、构建输入和兼容补丁。
 
 ## 微信管理命令（2026-09-23）
 
@@ -91,3 +109,5 @@ Pi 新增测试通过 native RPC double 验证 get_available_models / set_model 
 - 远端 CI；本地 macOS 检查不能代替远端 workflow 结果。
 
 临时测试状态和原生测试会话保留用于本地核查；不提交认证、代理值、私有路径、模型原文、图片或运行数据库。公开证据仅包含合成样本的状态与参数摘要。图片交接仍受保留期/数量/大小/像素上限限制；不支持无限历史记忆或微信原生引用消息。
+
+LIVE-25 FIFO 与 LIVE-16 取消各三轮核心断言通过；取消为 `interrupted + blocked` 保守分支，脚本退出由测试清理另行完成。新三次取消中断披露审计已通过，但两类场景的写工具远端写入 oracle 尚缺，因此 case 仍 BLOCKED，不能算整套 fault 验收。

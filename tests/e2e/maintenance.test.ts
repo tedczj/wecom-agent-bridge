@@ -110,7 +110,9 @@ test('MG07: an unexpected supervisor exit never replays an approved maintenance 
   assert.equal(h.store.value<Maintenance>('maintenance')!.phase,'requested');h.child.kill('SIGKILL');await h.exit;
   await eventually(()=>!existsSync(path.join(h.c.stateRoot,'instance.lock')),10000);
   // A fresh supervisor has a new token. Startup marks the abandoned control job failed, never reruns it.
-  const child=spawn(path.resolve('start.sh'),[h.config],{stdio:'pipe'}),exit=once(child,'exit');
+  const cli=path.resolve('dist/src/cli.js');
+  execFileSync(process.execPath,[path.resolve('dist/scripts/restart-bridge.js'),h.config,cli],{stdio:'pipe'});
+  const child=spawn(process.execPath,[cli,'start','--config',h.config],{stdio:'pipe'}),exit=once(child,'exit');
   child.stdout.resume();child.stderr.resume();h.cleanups.push(async()=>{if(child.exitCode===null&&child.signalCode===null){child.kill('SIGTERM');await exit;}});
   await eventually(()=>h.store.get(approval.taskId).status==='failed',10000);
   assert.equal(h.store.value<Maintenance>('maintenance')!.phase,'failed');assert.equal(h.store.get(work.taskId).status,'interrupted');

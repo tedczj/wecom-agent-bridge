@@ -1,0 +1,102 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { setup, fixture } from '../helpers.ts';
+import { normalize } from '../../src/local.ts';
+import { migrateV4 } from '../../src/migrations/v4.ts';
+import { parseModels, parseOrchestration } from '../../src/orchestration/config.ts';
+import { RequestStore, sha256 } from '../../src/orchestration/requests.ts';
+import { ControllerRegistry } from '../../src/orchestration/registry.ts';
+import { BusinessDispatch } from '../../src/orchestration/dispatch.ts';
+import { replayEvidence } from '../live/replay.ts';
+import type { Selection } from '../../src/store.ts';
+
+function ready(f: ReturnType<typeof setup>, raw = '  work\r\ne\u0301  ') {
+  const example = JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
+  f.c.orchestration = parseOrchestration(example.orchestration, parseModels(example.models));
+  const store = f.store(); migrateV4(store);
+  const requests = new RequestStore(store), incoming = normalize(fixture(raw), f.c, 'local:codex');
+  const request = requests.accept(incoming).request;
+  requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'bridge_planning');
+  requests.transition(request.request_id, request.conversation_scope, ['bridge_planning'], 'route_planning');
+  const directory = { id: f.c.workspace.id, path: f.workspace, identity: 'device:inode', profile: 'read', aliases: [], description: '' };
+  const selection: Selection = { config: f.c, digest: 'profile-digest', directory, reason: 'new', fresh: true, bind: true };
+  const registry = new ControllerRegistry(store, () => {}), actor = registry.prepare(request.conversation_scope, 'route', sha256(JSON.stringify([directory.path, directory.identity])), 'model-digest');
+  registry.registerNative(actor.controller_id, { threadId: randomUUID(), generation: 0 }, 'home');
+  registry.activate(actor.controller_id, null); registry.beginTurn(actor.controller_id);
+  const binding = { requestId: request.request_id, scope: request.conversation_scope, controllerId: actor.controller_id, generation: 0 };
+  return { store, requests, request, registry, binding, selection, dispatch: new BusinessDispatch(store, registry) };
+}
+test('OFFLINE M4: duplicate delegation enqueues one original job and does not rewrite legacy bindings', t => {
+  const f = setup(t), a = ready(f); let validations = 0;
+  const job = a.dispatch.enqueue(a.binding, 'selection', a.selection, () => { validations++; });
+  assert.equal(job.task_id, a.request.request_id);
+  assert.equal(JSON.parse(job.input_json).text, '  work\r\ne\u0301  ');
+  assert.equal(JSON.parse(job.input_json).rawQuerySha256, a.request.raw_query_sha256);
+  const again = a.dispatch.enqueue(a.binding, 'selection', a.selection, () => { validations++; });
+  assert.equal(again.task_id, job.task_id); assert.equal(validations, 1);
+  assert.equal(a.store.db.prepare("SELECT count(*) n FROM routing_state WHERE key LIKE 'binding:%'").get()!.n, 0);
+  assert.equal(a.store.db.prepare('SELECT count(*) n FROM jobs').get()!.n, 1);
+  assert.throws(() => a.dispatch.enqueue(a.binding, 'another-token', a.selection, () => {}), /EFFECT_ARGUMENT_CONFLICT/);
+});
+test('OFFLINE M4: ownership, directory and stale generation checks happen before any enqueue', t => {
+  const f = setup(t), a = ready(f);
+  assert.throws(() => a.dispatch.enqueue({ ...a.binding, generation: 1 }, 'selection', a.selection, () => {}), /CONTROLLER_STALE_CALLBACK/);
+  assert.throws(() => a.dispatch.enqueue({ ...a.binding, scope: 'another' }, 'selection', a.selection, () => {}), /DISPATCH_OWNER_MISMATCH/);
+  assert.throws(() => a.dispatch.enqueue(a.binding, 'selection', { ...a.selection, directory: { ...a.selection.directory, path: '/another' } }, () => {}), /DISPATCH_OWNER_MISMATCH/);
+  assert.throws(() => a.dispatch.enqueue(a.binding, 'selection', a.selection, () => { throw new Error('grant revoked'); }), /grant revoked/);
+  a.store.db.prepare('UPDATE orchestration_requests SET raw_query=? WHERE request_id=?').run('corrupted input', a.request.request_id);
+  assert.throws(() => a.dispatch.enqueue(a.binding, 'selection', a.selection, () => {}), /REQUEST_HASH_MISMATCH/);
+  assert.equal(a.store.db.prepare('SELECT count(*) n FROM jobs').get()!.n, 0);
+  assert.equal(a.store.db.prepare('SELECT count(*) n FROM controller_effects').get()!.n, 0);
+});
+test('OFFLINE M4: prompt submission uncertainty survives recovery without another job or prompt', t => {
+  const f = setup(t), a = ready(f), job = a.dispatch.enqueue(a.binding, 'selection', a.selection, () => {});
+  a.dispatch.submitting(job.task_id); a.dispatch.recover();
+  assert.throws(() => a.dispatch.submitting(job.task_id), /BUSINESS_EXECUTION_UNCERTAIN/);
+  assert.throws(() => a.dispatch.enqueue(a.binding, 'selection', a.selection, () => {}), /BUSINESS_EXECUTION_UNCERTAIN/);
+  assert.equal(a.store.db.prepare('SELECT count(*) n FROM jobs').get()!.n, 1);
+  assert.equal(a.store.db.prepare('SELECT state FROM controller_effects').get()!.state, 'uncertain');
+});
+test('OFFLINE prompt admission: one allowed submission, denied duplicates, and uncertainty remain durable', t => {
+  const a = ready(setup(t)), job = a.dispatch.enqueue(a.binding, 'selection', a.selection, () => {});
+  a.store.prepared(job.task_id, []); a.store.claim(); a.dispatch.submitting(job.task_id);
+  assert.equal(replayEvidence(a.store, [job.task_id]).complete, false);
+  a.dispatch.admitPrompt(job.task_id, a.request.raw_query_sha256);
+  a.store.put('business-wire:' + job.task_id, { textSha256: a.request.raw_query_sha256 });
+  assert.throws(() => a.dispatch.admitPrompt(job.task_id, a.request.raw_query_sha256), /BUSINESS_PROMPT_ALREADY_SUBMITTED/);
+  a.dispatch.finished(job.task_id, true); a.store.complete(job.task_id, 'interrupted', 'unknown');
+  a.store.db.prepare("UPDATE orchestration_requests SET phase='interrupted' WHERE request_id=?").run(job.task_id);
+  assert.equal(replayEvidence(a.store, [job.task_id]).pass, true);
+  assert.throws(() => a.dispatch.admitPrompt(job.task_id, a.request.raw_query_sha256), /BUSINESS_PROMPT_NOT_READY/);
+  const records = a.store.value<Array<{ admitted: boolean }>>('business-prompt-admissions:' + job.task_id)!;
+  assert.deepEqual(records.map(row => row.admitted), [true, false]);
+  a.store.put('business-prompt-admissions:' + job.task_id, [records[0], { ...records[0], ordinal: 2 }]);
+  assert.equal(replayEvidence(a.store, [job.task_id]).pass, false);
+});
+test('OFFLINE M4: root ingress FIFO blocks a later business job behind earlier unfinished planning', t => {
+  const f = setup(t), a = ready(f);
+  const later = a.requests.accept(normalize(fixture('later'), f.c, 'local:codex')).request;
+  a.requests.transition(later.request_id, later.conversation_scope, ['accepted'], 'bridge_planning');
+  a.requests.transition(later.request_id, later.conversation_scope, ['bridge_planning'], 'route_planning');
+  const job = a.dispatch.enqueue({ ...a.binding, requestId: later.request_id }, 'later-selection', a.selection, () => {});
+  a.store.prepared(job.task_id, []);
+  assert.equal(a.store.claim(), undefined);
+  a.requests.transition(a.request.request_id, a.request.conversation_scope, ['route_planning'], 'completed');
+  assert.equal(a.store.claim()!.task_id, job.task_id);
+});
+test('OFFLINE M4: pure target reply submits the source once and never concatenates the control text', t => {
+  const f = setup(t), a = ready(f, '  original work\r\n');
+  a.requests.transition(a.request.request_id, a.request.conversation_scope, ['route_planning'], 'completed');
+  a.store.db.prepare('UPDATE orchestration_requests SET route_snapshot_json=? WHERE request_id=?').run(JSON.stringify({ pendingSelection: true, expiresAt: Date.now() + 900000 }), a.request.request_id);
+  const control = a.requests.accept(normalize(fixture('第二个'), f.c, 'local:codex')).request;
+  a.requests.referencePending(control.request_id, a.request.request_id, control.conversation_scope);
+  a.requests.transition(control.request_id, control.conversation_scope, ['accepted'], 'bridge_planning');
+  a.requests.transition(control.request_id, control.conversation_scope, ['bridge_planning'], 'route_planning');
+  const job = a.dispatch.enqueue({ ...a.binding, requestId: control.request_id }, 'chosen', a.selection, () => {}), input = JSON.parse(job.input_json);
+  assert.equal(input.text, '  original work\r\n'); assert.equal(input.sourceRequestId, a.request.request_id);
+  assert.equal(input.rawQuerySha256, a.request.raw_query_sha256);
+  assert.throws(() => a.requests.transition(a.request.request_id, control.conversation_scope, ['completed'], 'route_planning'), /REQUEST_PHASE_TRANSITION/);
+  assert.equal(a.store.db.prepare('SELECT request_hash FROM jobs').get()!.request_hash, control.request_hash);
+});

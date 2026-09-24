@@ -1,10 +1,13 @@
 import { parseRouting, type RoutingConfig } from './routing/config.ts';
+import { parseModels, parseOrchestration, type ModelProfile, type OrchestrationConfig } from './orchestration/config.ts';
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { invariant, record } from './errors.ts';
 import { inside, privateDirectory } from './fsutil.ts';
 export const configSources = new WeakMap<Config,string>();
 export interface Config {
+  models?: Record<string, ModelProfile>;
+  orchestration?: OrchestrationConfig;
   routing?: RoutingConfig;
   transport: 'local' | 'weixin';
   backend: 'codex' | 'pi'; workspace: { id: string; path: string }; stateRoot: string;
@@ -14,7 +17,7 @@ export interface Config {
   agent: { command: string; args: string[]; env: Record<string, string>; passEnv: string[]; sessionRoot: string;
     startupTimeoutMs: number; taskTimeoutMs: number; cancelGraceMs: number; killGraceMs: number;
     maxFrameBytes: number; maxStreamBytes: number; isolation: 'native' | 'external' | 'unverified' };
-  codex: { home: string; sandbox: 'read-only' | 'workspace-write'; model?: string; reasoning?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; networkAccess: boolean };
+  codex: { home: string; sandbox: 'read-only' | 'workspace-write'; model?: string; reasoning?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'; contextWindowTokens?: number; networkAccess: boolean };
   reply: { chunkBytes: number; minIntervalMs: number; maxAutoParts: number; maxResultBytes: number; sendTimeoutMs: number };
 }
 function strict(v: unknown, keys: string[]): Record<string, unknown> {
@@ -30,7 +33,10 @@ function absolute(v: unknown): string {
 }
 function bool(v: unknown, fallback: boolean): boolean { invariant(v === undefined || typeof v === 'boolean', 'CONFIG_BOOLEAN'); return (v ?? fallback) as boolean; }
 export function parseConfig(value: unknown): Config {
-  const c = strict(value, ['transport', 'backend', 'workspace', 'stateRoot', 'local', 'queue', 'media', 'agent', 'reply', 'codex', 'routing']);
+  const c = strict(value, ['transport', 'backend', 'workspace', 'stateRoot', 'local', 'queue', 'media', 'agent', 'reply', 'codex', 'routing', 'models', 'orchestration']);
+  const models = c.models === undefined ? undefined : parseModels(c.models);
+  invariant(c.orchestration === undefined || models, 'CONFIG_MODELS_REQUIRED');
+  const orchestration = c.orchestration === undefined ? undefined : parseOrchestration(c.orchestration, models!);
   const transport = c.transport ?? 'local'; invariant(transport === 'local' || transport === 'weixin', 'TRANSPORT_NOT_IMPLEMENTED');
   const backend = c.backend ?? 'codex'; invariant(backend === 'codex' || backend === 'pi', 'BACKEND_NOT_IMPLEMENTED');
   const w = strict(c.workspace, ['id', 'path']), stateRoot = absolute(c.stateRoot);
@@ -54,7 +60,7 @@ export function parseConfig(value: unknown): Config {
   invariant(passEnv.every(k => ['CODEX_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GOOGLE_API_KEY'].includes(k)), 'UNSAFE_AGENT_ENV');
   const sessionRoot = absolute(a.sessionRoot ?? path.join(stateRoot, 'agent-sessions'));
   invariant(!inside(workspace.path, sessionRoot) && !inside(sessionRoot, workspace.path), 'SESSIONS_IN_WORKSPACE');
-  const x = strict(c.codex ?? {}, ['home', 'sandbox', 'model', 'reasoning', 'networkAccess']);
+  const x = strict(c.codex ?? {}, ['home', 'sandbox', 'model', 'reasoning', 'contextWindowTokens', 'networkAccess']);
   const home = absolute(x.home ?? path.join(stateRoot, 'codex-home'));
   invariant(!inside(workspace.path, home) && !inside(home, workspace.path), 'CODEX_HOME_WORKSPACE_OVERLAP');
   invariant(x.reasoning === undefined || ['minimal','low','medium','high','xhigh'].includes(String(x.reasoning)), 'CONFIG_REASONING');
@@ -63,13 +69,15 @@ export function parseConfig(value: unknown): Config {
   invariant(['unverified', 'external', 'native'].includes(String(isolation)), 'CONFIG_ISOLATION');
   const r = strict(c.reply ?? {}, ['chunkBytes', 'minIntervalMs', 'maxAutoParts', 'maxResultBytes', 'sendTimeoutMs']);
   return {
+    models, orchestration,
     routing: c.routing === undefined ? undefined : parseRouting(c.routing),
     transport, backend, workspace, stateRoot, local: { actorId, maxInputBytes: integer(l.maxInputBytes, 131072, 256, 1048576) },
     queue: { maxActive: 1, maxPendingPerSession: integer(q.maxPendingPerSession, 3, 1, 100), maxPendingGlobal: integer(q.maxPendingGlobal, 20, 1, 1000) },
     media: { maxImages: integer(m.maxImages, 4, 1, 4), maxImageBytes: integer(m.maxImageBytes, 10485760, 64, 20971520), maxTotalBytes: integer(m.maxTotalBytes, 20971520, 64, 41943040), maxPixels: integer(m.maxPixels, 20000000, 1, 40000000), maxTotalPixels: integer(m.maxTotalPixels, 40000000, 1, 80000000), retentionHours: integer(m.retentionHours, 24, 1, 168) },
     agent: { command: absolute(a.command), args, env: env as Record<string,string>, passEnv, sessionRoot,
       startupTimeoutMs: integer(a.startupTimeoutMs, 30000, 1, 120000), taskTimeoutMs: integer(a.taskTimeoutMs, 900000, 1, 3600000), cancelGraceMs: integer(a.cancelGraceMs, 5000, 1, 30000), killGraceMs: integer(a.killGraceMs, 2000, 1, 10000), maxFrameBytes: integer(a.maxFrameBytes, 8388608, 256, 67108864), maxStreamBytes: integer(a.maxStreamBytes, 134217728, 1024, 536870912), isolation: isolation as Config['agent']['isolation'] },
-    codex: { home, sandbox, model: x.model === undefined ? undefined : str(x.model), reasoning: x.reasoning as Config['codex']['reasoning'], networkAccess: bool(x.networkAccess, false) },
+    codex: { home, sandbox, model: x.model === undefined ? undefined : str(x.model), reasoning: x.reasoning as Config['codex']['reasoning'],
+      ...(x.contextWindowTokens === undefined ? {} : { contextWindowTokens: integer(x.contextWindowTokens, 1, 1, Number.MAX_SAFE_INTEGER) }), networkAccess: bool(x.networkAccess, false) },
     reply: { chunkBytes: integer(r.chunkBytes, 65536, 128, 1048576), minIntervalMs: integer(r.minIntervalMs, 0, 0, 60000), maxAutoParts: integer(r.maxAutoParts, 20, 1, 100), maxResultBytes: integer(r.maxResultBytes, 1048576, 128, 1048576), sendTimeoutMs: integer(r.sendTimeoutMs, 15000, 1, 60000) },
   };
 }

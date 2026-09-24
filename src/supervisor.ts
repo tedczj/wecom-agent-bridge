@@ -7,6 +7,7 @@ import { acquireLock,clearStaleLock,privateDirectory } from './fsutil.ts';
 import { BridgeError,errorCode,invariant,log } from './errors.ts';
 import { Store } from './store.ts';
 import { type Maintenance } from './maintenance.ts';
+import { finishHierarchicalMaintenance } from './orchestration/maintenance-result.ts';
 
 function hostEnvironment():NodeJS.ProcessEnv {
   const keys=['HOME','PATH','LANG','TMPDIR','SSH_AUTH_SOCK','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','http_proxy','https_proxy','all_proxy','no_proxy'];
@@ -58,9 +59,11 @@ export async function supervise(c:Config,configFile:string,cliFile:string):Promi
     try {const exit=await new Promise<number|null>(resolve=>{running.once('error',()=>resolve(null));running.once('exit',n=>resolve(n));});invariant(exit===0 && !stopping,stopping?'MAINTENANCE_INTERRUPTED':code);}
     finally {clearTimeout(timer);clearTimeout(stopKill);operation=undefined;}
   };
-  const finish=(m:Maintenance,code?:string)=>{
+  const finish=async(m:Maintenance,code?:string)=>{
     const store=new Store(database,c);
-    try {store.atomic(()=>{
+    try {
+      if (c.orchestration) { await finishHierarchicalMaintenance(c,store,m,code); return; }
+      store.atomic(()=>{
       store.put('maintenance',{...m,phase:code?'failed':'succeeded',code});
       const message=code?`服务管理未完成（${code}），未自动重试。${m.action==='update'?'源码可能已拉取；原运行产物已保留，未重放工作任务。':''}`:
         `${m.action==='update'?'更新检查通过，':'重启完成，'}桥接服务已恢复。${m.newHead?'\n运行版本：'+m.newHead.slice(0,12):''}`;
@@ -76,8 +79,9 @@ export async function supervise(c:Config,configFile:string,cliFile:string):Promi
       try {
         m=store.value<Maintenance>('maintenance');
         if(!m || m.phase!=='requested' || m.supervisorToken!==token)continue;
-        if(store.blocked()){finish(m,'WORKSPACE_BLOCKED');continue;}
+        if(store.blocked()){await finish(m,'WORKSPACE_BLOCKED');continue;}
         if(store.db.prepare("SELECT 1 FROM jobs WHERE kind='agent' AND status IN ('preparing','queued','running','cancel_requested')").get() || existsSync(path.join(c.stateRoot,'routing-agent','state','agent-process.json')))continue;
+        if (c.orchestration && store.db.prepare("SELECT 1 FROM orchestration_requests WHERE request_id<>? AND phase NOT IN ('completed','failed','cancelled','interrupted') LIMIT 1").get(m.taskId)) continue;
       }finally{store.close();}
       const backup=path.join(supervisorRoot,'backup-'+m.taskId),moved:string[]=[];
       const save=()=>{const db=new Store(database,c);try{db.put('maintenance',m);}finally{db.close();}};
@@ -101,7 +105,7 @@ export async function supervise(c:Config,configFile:string,cliFile:string):Promi
           await run(process.platform==='win32'?'npm.cmd':'npm',['run','check'],'UPDATE_CHECK_FAILED');
         }
         m.phase='starting';save();await startWorker(true);stoppedForMaintenance=false;
-        finish(m);if(moved.length)try {rmSync(backup,{recursive:true,force:true});}catch {log('maintenance.backup_retained',{code:'BACKUP_CLEANUP_FAILED'});}
+        await finish(m);if(moved.length)try {rmSync(backup,{recursive:true,force:true});}catch {log('maintenance.backup_retained',{code:'BACKUP_CLEANUP_FAILED'});}
       } catch(e) {
         const code=errorCode(e,'MAINTENANCE_FAILED');
         if(moved.length) {
@@ -111,7 +115,7 @@ export async function supervise(c:Config,configFile:string,cliFile:string):Promi
             if(existsSync(path.join(backup,name)))renameSync(path.join(backup,name),path.join(root,name));
           }
         }
-        finish(m,code);
+        await finish(m,code);
         if(stoppedForMaintenance && !stopping) {await startWorker(true);stoppedForMaintenance=false;}
       }
     }

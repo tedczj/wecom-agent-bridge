@@ -1,5 +1,29 @@
 # Implementation choices
 
+## Hierarchical path in progress
+
+The optional three-layer path is implemented in `controllers/`, `orchestration/`, `answers/`, `history/` and `migrations/`; `main.ts` selects it behind a runtime capability proof. An independent compatibility candidate now satisfies M0 for its pinned binary and observed profile; the original installed runtime remains unqualified. [Current status and evidence](THREE_LAYER_IMPLEMENTATION_STATUS.md) is authoritative for this unfinished path; the sections below describe the existing default Bridge and router.
+
+Model selection merges model, reasoning and context window independently in request, explicit-session, directory, daily order. Sources are persisted with the business input; effective values enter the execution digest. Codex receives a fixed `model_context_window` argument. Pi checks the requested window against RPC model metadata before prompting and rejects mismatches. Neither configured capacity nor offline adapter checks prove provider capacity.
+
+Hierarchical model profiles contain operator-declared IDs; the advisory native model cache cannot rename or veto them. Backend rejection still fails without substituting another model. Pure directory selection uses `switch`; a combined switch plus project inspection uses `work`. A Route execution attempt under a non-work intent is an explicit failure.
+
+Controller tool audits persist call IDs, invocation order, argument/result hashes, outcome codes and answer range metadata. A `started` record survives an interrupted callback; audit capacity is checked before invoking the handler. Bridge delegation responses are constrained to the short result envelope. Tool bodies and raw error messages are not included. These host checks do not establish the native generated tool surface required by M0.
+
+The serialization boundary separately records tool-result hashes and current thread/turn/request identity. Original bodies are not retained in these audit rows. Management may end with empty text only after a host terminal delegation result for that same request, with all callbacks finished and a native completed turn. Bootstrap and standalone controller replies still require text; business final, exit and cleanup checks remain unchanged. A second business prompt submission for an existing request is rejected before writing stdin.
+
+Failed, cancelled and interrupted hierarchical requests receive a separate system outcome notice and safe interaction projection. The notice has no completed business-job evidence; unfinished business drafts remain unreadable and are marked partial when no completion proof exists. Notice recovery does not change job status, response clocks or delivery records. Startup repairs missing notices for new v4 requests without backfilling legacy-v3 conversations or replaying prompts.
+
+The supervisor archives hierarchical maintenance finals before atomically committing terminal state and the `maintenance-final` outbox entry. Repeated completion preserves the first result. Startup repairs a persisted finish/SQL gap before generic interrupted-job recovery, retaining the completion timestamp and avoiding an operation replay. The supervisor produces only verbatim short recaps; an over-budget recap is explicitly unavailable and does not change maintenance success or resend its result.
+
+Native exact lookup checks the selected indexed file's header and directory identity. Successful resume verification caches its completion timestamp with file revision; changed files lose that cached timestamp. Only complete candidate pages whose completion times are all verified use completion-time ordering. Partial pages retain explicit coverage and native metadata ordering; background/cross-page indexing remains unfinished.
+
+Usage events include time, role, generation, completed-request token usage, runtime window and rotation reason. Real 1M/80% stress scenarios are deferred by the operator; fixed offline threshold tests remain enabled. `/debug [requestId]` reads scoped persisted metadata without starting a model or scanning native history.
+
+`maxControllerDecisionsPerRequest` bounds the combined host tool callbacks across Bridge and Route for one root. Admission is recorded before awaiting a handler, so an in-flight parent consumes budget while waiting for its child. Exhaustion rejects before effects; a later root has its own budget. The app-server callback guard also uses the configured bound instead of a hard-coded 12. Capability errors separately identify binary/config/model mismatches and missing positive checks, without weakening the startup gate.
+
+Codex exec 0.155.1 flattens native stream-reconnect notifications into `error` JSONL events and represents warnings as non-fatal error items. The adapter accepts only the known in-turn reconnect prefix as a diagnostic; unknown errors remain fatal. Successful completion still requires valid thread/turn events, final text, `turn.completed`, exit 0 and cleanup in the same process. An explicit model-reroute notice is rejected rather than reported as the requested model. The host does not resubmit the prompt.
+
 ## Shared execution and delivery
 
 Both transports use the same Bridge, SQLite Store, MediaStore and durable outbox. Local frames are normalized against the configured actor; Weixin frames are checked against the QR-paired bot/user before they can reach the Bridge. Transport and account identity are pinned before worker startup. v1 state is rejected, and existing tasks are not translated across transports.
@@ -66,3 +90,7 @@ Design reference: NousResearch/hermes-agent revision [`42c1a93417fa588e735736a07
 ## Diagnostic command
 
 `debug.ts` selects up to six same-conversation jobs or one unique 8–36-character hexadecimal/hyphen task prefix, excluding all message bodies and transport identities. It captures the installation checkout SHA once on process startup using a fixed, timeout-bounded Git command and minimal environment; unavailable Git yields `unknown`, not a command failure. This is explicitly not build provenance. `Router` records bounded action/target/scan summaries; `Bridge` commits them with the reservation even when routing fails. History scan errors retain codes and hashed paths, not file contents or raw exception messages. Live debug scans neither update listing cursors nor persist a new route. Results use the ordinary deduplicated command/outbox path. No schema migration, network listener, backend invocation or shell-argument surface is added.
+
+### Hierarchical native project trust
+
+Codex business execution in hierarchical mode passes a transient `projects={"<cwd>"={trust_level="untrusted"}}` override. This prevents the native workspace-write startup from persisting implicit project trust and loading project-local `.codex` configuration. The host sandbox/profile remains authoritative. The override is passed explicitly after Catalog removes management configuration, and its policy version participates in the business profile digest. CLI dotted keys do not parse quoted path components, so the path is encoded as a TOML inline-table key. Explicit v4 migration verifies the unchanged legacy execution configuration before rekeying a bound session to this fixed policy; native IDs and clocks remain intact and the old/new hashes are recorded.

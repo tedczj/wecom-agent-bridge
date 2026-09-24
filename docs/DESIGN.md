@@ -1,4 +1,12 @@
-# Local Agent Bridge — current design
+# Local Agent Bridge — implementation modes
+
+## Hierarchical implementation in progress
+
+`main.ts` selects `HierarchicalBridge` only for explicit `orchestration.mode=hierarchical` and a complete, matching controller capability proof. An independent [compatibility candidate](THREE_LAYER_RUNTIME_COMPATIBILITY.md) has passed M0 for the observed model/window; the unchanged installed binary has no matching successful proof. Production has not been switched. [Implementation status](THREE_LAYER_IMPLEMENTATION_STATUS.md) identifies implemented components, live observations and remaining acceptance gaps. The [frozen design](THREE_LAYER_AGENT_BRIDGE.md) remains the target contract, not evidence of completion.
+
+The hierarchical path uses v4 raw requests, durable host-bound delegation, separate management sessions and one business worker, immutable answer artifacts, safe recap projections, and runtime-only usage telemetry. Model/effort/window values retain individual sources. No historical text or images are injected into business prompts. Migration from populated v3 state is explicit and backed up; there is no automatic replay or fallback to legacy execution after a capability failure.
+
+The remaining sections describe the existing non-hierarchical implementation. Their history-injection, schema-v3 and interpreter rules do not describe the new path.
 
 ## Scope and migration
 

@@ -1,0 +1,48 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync, realpathSync } from 'node:fs';
+import path from 'node:path';
+import { setup, fixture } from '../helpers.ts';
+import { migrateV4 } from '../../src/migrations/v4.ts';
+import { normalize } from '../../src/local.ts';
+import { RequestStore } from '../../src/orchestration/requests.ts';
+import { ControllerRegistry } from '../../src/orchestration/registry.ts';
+import { recoveredControllerClosure } from '../live/recovered-closure.ts';
+import { bridgeDisclosure } from '../live/bridge-disclosure.ts';
+
+test('OFFLINE recovered disclosure: authoritative closure permits only unsent abandoned calls, not invented completion', async t => {
+  const f = setup(t), store = f.store(); migrateV4(store);
+  const child = spawn(process.execPath, ['-e', ''], { detached: true, env: {}, stdio: 'ignore' }); await once(child, 'exit');
+  const requests = new RequestStore(store), request = requests.accept(normalize(fixture(), f.c, 'local:codex')).request;
+  requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'interrupted');
+  const actor = new ControllerRegistry(store, () => {}).prepare(request.conversation_scope, 'bridge', null, 'model');
+  const threadId = randomUUID();
+  store.db.prepare("UPDATE controller_sessions SET state='failed',native_ref_json=? WHERE controller_id=?").run(JSON.stringify({ threadId, generation: 0 }), actor.controller_id);
+  const policy = { kind: 'policy', role: 'bridge', controllerId: actor.controller_id, requestId: request.request_id, threadId, turnId: 'turn', valid: true,
+    evidence: { threadId, turnId: 'turn', toolNames: ['route_delegate'], dynamicToolsOnly: true, nativeAutoCompaction: 'disabled' } };
+  const audit = { role: 'bridge', controllerId: actor.controller_id, tool: 'route_delegate', callId: 'call', status: 'started' };
+  store.put('controller-policy-wire:bridge:' + request.request_id, policy); store.put('tool-audit:' + request.request_id, [audit]);
+  const work = path.join(f.root, 'controllers'), directory = path.join(work, 'bridge', actor.controller_id); mkdirSync(directory, { recursive: true });
+  const token = randomUUID(), file = path.join(directory, 'process.json.stopped-' + token);
+  const marker = { pid: child.pid, token, controllerId: actor.controller_id, role: 'bridge', binary: realpathSync(process.execPath) };
+  const boundary = { taskId: request.request_id, parentPid: child.pid, nativeGroups: [child.pid], fault: 'actual SIGKILL of bridge host process only' };
+  writeFileSync(file, JSON.stringify(marker)); writeFileSync(path.join(f.root, 'kill-boundary.json'), JSON.stringify(boundary));
+  const collect = () => recoveredControllerClosure(store, work, process.execPath, f.root, request.request_id);
+  assert.equal(bridgeDisclosure(store, [request.request_id]).complete, false);
+  const proof = await collect(); const check = () => bridgeDisclosure(store, [request.request_id], [proof]);
+  assert.equal(check().pass, true); assert.equal(store.value('controller-turn:bridge:' + request.request_id), undefined);
+  assert.equal(bridgeDisclosure(store, [request.request_id], [{ ...proof }]).complete, false);
+  store.put('tool-audit:' + request.request_id, [{ ...audit, resultSha256: 'unexpected' }]); assert.equal(check().pass, false);
+  store.put('tool-audit:' + request.request_id, [audit]);
+  store.put('controller-tool-wire:bridge:' + request.request_id, [{ callId: 'call', resultSha256: 'unexpected' }]); assert.equal(check().pass, false);
+  store.put('controller-tool-wire:bridge:' + request.request_id, []);
+  store.put('controller-policy-wire:bridge:' + request.request_id, { ...policy, valid: false }); assert.equal(check().pass, false);
+  store.put('controller-policy-wire:bridge:' + request.request_id, policy);
+  writeFileSync(file, JSON.stringify({ ...marker, role: 'route' })); await assert.rejects(collect(), /LIVE_CLOSURE_PROCESS/);
+  writeFileSync(file, JSON.stringify({ ...marker, pid: process.pid })); await assert.rejects(collect(), /LIVE_CLOSURE_PROCESS/);
+  writeFileSync(file, JSON.stringify(marker));
+  writeFileSync(path.join(f.root, 'kill-boundary.json'), JSON.stringify({ ...boundary, taskId: 'foreign' })); await assert.rejects(collect(), /LIVE_CLOSURE_BOUNDARY/);
+});

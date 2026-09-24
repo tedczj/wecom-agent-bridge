@@ -12,6 +12,7 @@ import type { Store } from './store.ts';
 import { WeixinApi, field, type WeixinAuth } from './weixin-api.ts';
 import { loadOrLogin } from './weixin-login.ts';
 import { downloadImage } from './weixin-media.ts';
+import { HierarchicalBridge } from './orchestration/engine.ts';
 
 export function normalizeWeixin(value: unknown, auth: WeixinAuth, c: Config): {incoming: Incoming; images: Record<string,unknown>[]; context: string; unsupported?: string} {
   const msg = record(value);
@@ -34,9 +35,10 @@ export function normalizeWeixin(value: unknown, auth: WeixinAuth, c: Config): {i
     if (item.ref_msg) unsupported = 'WEIXIN_QUOTE_UNSUPPORTED';
   }
   invariant(images.length <= c.media.maxImages, 'MEDIA_COUNT');
-  const text = texts.join('\n').trim() || (images.length ? '请分析这张图片' : '[不支持的微信消息]');
+  const rawText = texts.join('\n');
+  const text = c.orchestration ? rawText : rawText.trim() || (images.length ? '请分析这张图片' : '[不支持的微信消息]');
   invariant(Buffer.byteLength(text) <= 65536, 'INPUT_TEXT');
-  invariant(!text.startsWith('/') || images.length === 0, 'COMMAND_IMAGES');
+  invariant(!text.trim().startsWith('/') || images.length === 0, 'COMMAND_IMAGES');
   return {context, images, unsupported, incoming:{messageId,reqId:messageId,text,media:[],receivedAt:Date.now(),
     route:{channelId:`weixin:${auth.botId}`,kind:'weixin',targetId:auth.userId,senderId:auth.userId}}};
 }
@@ -77,22 +79,26 @@ export class WeixinReceiver {
     setMeta(store,'weixin:context',context);
     const stage = path.join(this.c.stateRoot,'weixin-incoming',createHash('sha256').update(incoming.messageId).digest('hex'));
     incoming.media = images.map((_,i) => ({path:path.join(stage,`image-${i}`),source:'message'}));
-    const previous = store.db.prepare('SELECT task_id FROM jobs WHERE channel_id=? AND message_id=?').get(incoming.route.channelId,incoming.messageId);
+    const previous = this.c.orchestration ? store.db.prepare('SELECT request_id task_id FROM orchestration_requests WHERE channel_id=? AND message_id=?').get(incoming.route.channelId,incoming.messageId)
+      : store.db.prepare('SELECT task_id FROM jobs WHERE channel_id=? AND message_id=?').get(incoming.route.channelId,incoming.messageId);
     if (previous) {
       // Validate duplicate input without redownloading or re-executing it.
-      await this.service.bridge.accept(incoming); return;
+      const result = await this.service.bridge.accept(incoming);
+      if (this.service.bridge instanceof HierarchicalBridge && result.taskId) { await this.service.bridge.mediaReady(result.taskId); rmSync(stage, { recursive: true, force: true }); }
+      return;
     }
     const fail = (code: string) => {
-      const {job,duplicate} = store.reserve(incoming,'command'); if (duplicate) return;
       const text = code === 'WEIXIN_VOICE_TRANSCRIPT_MISSING' ? '这条语音没有附带转写文本，当前未配置额外语音识别。请在微信转成文字后发送。'
         : code === 'WEIXIN_MEDIA_UNSUPPORTED' ? '当前支持文字、图片和带转写文本的语音；暂不支持文件或视频。'
         : code === 'WEIXIN_QUOTE_UNSUPPORTED' ? '当前暂不处理引用消息，请把需要分析的内容直接发送。'
         : `消息未执行（${code}），请检查本地 bridge。`;
-      store.complete(job.task_id,'failed',text,code);
+      if (this.service.bridge instanceof HierarchicalBridge) this.service.bridge.reject(incoming, code, text);
+      else { const {job,duplicate} = store.reserve(incoming,'command'); if (!duplicate) store.complete(job.task_id,'failed',text,code); }
     };
     if (unsupported) { fail(unsupported); return; }
     try {
       if (images.length) {
+        if (this.c.orchestration) rmSync(stage, { recursive: true, force: true });
         privateDirectory(stage); let total = 0;
         for (const [i,image] of images.entries()) {
           const bytes = await downloadImage(image,this.c.media.maxImageBytes,signal);
@@ -103,7 +109,10 @@ export class WeixinReceiver {
       const result = await this.service.bridge.accept(incoming);
       if (result.rejected) { fail(result.rejected); return; }
       // MediaStore copies and fully validates input before staged files disappear.
-      if (result.taskId) while (store.get(result.taskId).status === 'preparing') await sleep(10,undefined,{signal});
+      if (result.taskId) {
+        if (this.service.bridge instanceof HierarchicalBridge) await this.service.bridge.mediaReady(result.taskId);
+        else while (store.get(result.taskId).status === 'preparing') await sleep(10,undefined,{signal});
+      }
       log('weixin.accepted',{taskId:result.taskId});
     } catch(e) {
       if (signal.aborted) throw e;
@@ -133,7 +142,7 @@ export async function runWeixin(c: Config, output: Writable, signal: AbortSignal
       const identity = JSON.stringify([channel.auth.botId,channel.auth.userId]);
       invariant(!getMeta(store,'weixin:identity') || getMeta(store,'weixin:identity') === identity,'WEIXIN_ACCOUNT_MISMATCH');
       setMeta(store,'weixin:identity',identity);
-      const stage = path.join(c.stateRoot,'weixin-incoming'); privateDirectory(stage); rmSync(stage,{recursive:true,force:true});
+      const stage = path.join(c.stateRoot,'weixin-incoming'); privateDirectory(stage); if (!c.orchestration) rmSync(stage,{recursive:true,force:true});
       channel.ready = true;
     }});
   const stop = () => { void service.bridge.stop().catch(() => log('weixin.stop_failed')); };

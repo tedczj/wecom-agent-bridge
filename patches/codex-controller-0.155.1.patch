@@ -1,0 +1,269 @@
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 3507239..d36d021 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -674,6 +674,9 @@
+             "bedrock_setup_wizard": {
+               "type": "boolean"
+             },
++            "bridge_controller_only": {
++              "type": "boolean"
++            },
+             "browser_use": {
+               "type": "boolean"
+             },
+@@ -6199,6 +6202,9 @@
+         "bedrock_setup_wizard": {
+           "type": "boolean"
+         },
++        "bridge_controller_only": {
++          "type": "boolean"
++        },
+         "browser_use": {
+           "type": "boolean"
+         },
+diff --git a/codex-rs/core/src/session/turn.rs b/codex-rs/core/src/session/turn.rs
+index 5d5fa3a..6bd7f70 100644
+--- a/codex-rs/core/src/session/turn.rs
++++ b/codex-rs/core/src/session/turn.rs
+@@ -1403,6 +1403,16 @@ async fn run_auto_compact(
+     phase: CompactionPhase,
+ ) -> CodexResult<()> {
+     let turn_context = &step_context.turn;
++    if turn_context
++        .config
++        .features
++        .enabled(Feature::BridgeControllerOnly)
++    {
++        return Err(CodexErrorDetails::InvalidRequest(
++            "BRIDGE_NATIVE_AUTO_COMPACTION_DISABLED".to_string(),
++        )
++        .into());
++    }
+     let _profile_guard = turn_context.turn_timing_state.begin_compaction();
+     if turn_context.config.features.enabled(Feature::TokenBudget) {
+         // Compaction is the reset request, so force a new context window
+@@ -1583,6 +1593,26 @@ async fn run_sampling_request(
+             step_context.as_ref(),
+             base_instructions.clone(),
+         );
++        if turn_context
++            .config
++            .features
++            .enabled(Feature::BridgeControllerOnly)
++        {
++            let policy = serde_json::json!({
++                "version": 1,
++                "turnId": turn_context.sub_id,
++                "dynamicToolsOnly": true,
++                "nativeAutoCompaction": "disabled",
++                "tools": prompt.tools.as_ref(),
++            });
++            sess.send_event(
++                &turn_context,
++                EventMsg::Warning(WarningEvent {
++                    message: format!("BRIDGE_CONTROLLER_POLICY_V1:{policy}"),
++                }),
++            )
++            .await;
++        }
+         if crate::guardian::is_basic_session_source(&turn_context.session_source) {
+             crate::guardian::check_guardian_prompt_budget(
+                 &sess,
+diff --git a/codex-rs/core/src/tools/spec_plan.rs b/codex-rs/core/src/tools/spec_plan.rs
+index 01054b1..0b94257 100644
+--- a/codex-rs/core/src/tools/spec_plan.rs
++++ b/codex-rs/core/src/tools/spec_plan.rs
+@@ -133,6 +133,24 @@ pub(crate) fn build_tool_router(
+     step_store: &ExtensionData,
+     tool_suggest_candidates: Option<&crate::tools::router::ToolSuggestCandidates>,
+ ) -> CodexResult<ToolRouter> {
++    if turn_context
++        .config
++        .features
++        .enabled(Feature::BridgeControllerOnly)
++    {
++        let mut registry = ToolRegistry::default();
++        append_dynamic_tool_runtimes(&turn_context.dynamic_tools, &mut registry);
++        let specs =
++            merge_into_namespaces(registry.entries().map(|tool| tool.runtime.spec()).collect());
++        return Ok(ToolRouter::from_parts(
++            registry,
++            specs,
++            ToolMode::Direct,
++            BTreeMap::new(),
++            /*tool_namespaces_info*/ None,
++            &[],
++        ));
++    }
+     let default_agent_type_description =
+         crate::agent::role::spawn_tool_spec::build(&std::collections::BTreeMap::new());
+     let wait_for_environment_tool_config = session
+diff --git a/codex-rs/core/tests/suite/bridge_controller.rs b/codex-rs/core/tests/suite/bridge_controller.rs
+new file mode 100644
+index 0000000..b473823
+--- /dev/null
++++ b/codex-rs/core/tests/suite/bridge_controller.rs
+@@ -0,0 +1,124 @@
++use anyhow::Result;
++use codex_core::StartThreadOptions;
++use codex_core::TurnInputRequest;
++use codex_features::Feature;
++use codex_protocol::dynamic_tools::DynamicToolFunctionSpec;
++use codex_protocol::dynamic_tools::DynamicToolSpec;
++use codex_protocol::protocol::EventMsg;
++use codex_protocol::user_input::UserInput;
++use core_test_support::responses;
++use core_test_support::test_codex::test_codex;
++use core_test_support::wait_for_event;
++use core_test_support::wait_for_event_match;
++use pretty_assertions::assert_eq;
++use serde_json::Value;
++use serde_json::json;
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn bridge_controller_only_sends_dynamic_tools_and_reports_the_exact_inventory() -> Result<()>
++{
++    let server = responses::start_mock_server().await;
++    let mock = responses::mount_sse_once(
++        &server,
++        responses::sse(vec![
++            responses::ev_assistant_message("message", "done"),
++            responses::ev_completed("response"),
++        ]),
++    )
++    .await;
++    let test = test_codex()
++        .with_config(|config| {
++            config
++                .features
++                .enable(Feature::BridgeControllerOnly)
++                .unwrap();
++            config.features.enable(Feature::ShellTool).unwrap();
++            config.features.enable(Feature::ViewImage).unwrap();
++        })
++        .build_with_auto_env(&server)
++        .await?;
++    let started = test
++        .thread_manager
++        .start_thread(StartThreadOptions {
++            dynamic_tools: vec![DynamicToolSpec::Function(DynamicToolFunctionSpec {
++                name: "bridge_read".to_string(),
++                description: "Read host metadata".to_string(),
++                input_schema: json!({"type":"object","properties":{},"additionalProperties":false}),
++                defer_loading: false,
++            })],
++            ..StartThreadOptions::new(test.config.clone())
++        })
++        .await?;
++    started
++        .thread
++        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++            text: "Only answer done".to_string(),
++            text_elements: Vec::new(),
++        }]))
++        .await?;
++    let policy = wait_for_event_match(&started.thread, |event| match event {
++        EventMsg::Warning(warning) => warning
++            .message
++            .strip_prefix("BRIDGE_CONTROLLER_POLICY_V1:")
++            .map(str::to_owned),
++        _ => None,
++    })
++    .await;
++    wait_for_event(&started.thread, |event| {
++        matches!(event, EventMsg::TurnComplete(_))
++    })
++    .await;
++    let policy: Value = serde_json::from_str(&policy)?;
++    let body = mock.single_request().body_json();
++    assert_eq!(policy["tools"], body["tools"]);
++    assert_eq!(policy["nativeAutoCompaction"], "disabled");
++    assert_eq!(policy["dynamicToolsOnly"], true);
++    let names = body["tools"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|tool| tool["name"].as_str().unwrap())
++        .collect::<Vec<_>>();
++    assert_eq!(names, vec!["bridge_read"]);
++    started.thread.shutdown_and_wait().await?;
++    Ok(())
++}
++
++#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
++async fn bridge_controller_rejects_automatic_compaction_without_a_compaction_request() -> Result<()>
++{
++    let server = responses::start_mock_server().await;
++    let mock = responses::mount_sse_once(
++        &server,
++        responses::sse(vec![
++            responses::ev_assistant_message("message", "done"),
++            responses::ev_completed_with_tokens("response", /*total_tokens*/ 70_000),
++        ]),
++    )
++    .await;
++    let test = test_codex()
++        .with_config(|config| {
++            config
++                .features
++                .enable(Feature::BridgeControllerOnly)
++                .unwrap();
++            config.model_auto_compact_token_limit = Some(50_000);
++        })
++        .build_with_auto_env(&server)
++        .await?;
++    test.submit_text_turn("first").await?;
++    test.codex
++        .start_or_steer_turn(TurnInputRequest::user_input(vec![UserInput::Text {
++            text: "second".to_string(),
++            text_elements: Vec::new(),
++        }]))
++        .await?;
++    let error = wait_for_event_match(&test.codex, |event| match event {
++        EventMsg::Error(error) => Some(error.message.clone()),
++        _ => None,
++    })
++    .await;
++    assert!(error.contains("BRIDGE_NATIVE_AUTO_COMPACTION_DISABLED"));
++    assert_eq!(mock.requests().len(), 1);
++    Ok(())
++}
+diff --git a/codex-rs/core/tests/suite/mod.rs b/codex-rs/core/tests/suite/mod.rs
+index b266997..9c4f37a 100644
+--- a/codex-rs/core/tests/suite/mod.rs
++++ b/codex-rs/core/tests/suite/mod.rs
+@@ -45,6 +45,7 @@ mod apply_patch_serialization;
+ mod approvals;
+ mod audio_truncation;
+ mod auto_review;
++mod bridge_controller;
+ mod catalog_permission_messages;
+ mod cli_stream;
+ mod client;
+diff --git a/codex-rs/features/src/lib.rs b/codex-rs/features/src/lib.rs
+index 1a31316..cc551ca 100644
+--- a/codex-rs/features/src/lib.rs
++++ b/codex-rs/features/src/lib.rs
+@@ -91,6 +91,8 @@ impl Stage {
+ /// Unique features toggled via configuration.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+ pub enum Feature {
++    /// Restrict bridge management sessions to client dynamic tools and reject automatic compaction.
++    BridgeControllerOnly,
+     /// Discover model catalogs for OpenAI API-key authentication.
+     ApiKeyModelDiscovery,
+     /// Enable the interactive transcript composer and turn-selection UI.
+@@ -902,6 +904,12 @@ pub struct FeatureSpec {
+ }
+ 
+ pub const FEATURES: &[FeatureSpec] = &[
++    FeatureSpec {
++        id: Feature::BridgeControllerOnly,
++        key: "bridge_controller_only",
++        stage: Stage::UnderDevelopment,
++        default_enabled: false,
++    },
+     FeatureSpec {
+         id: Feature::TranscriptV2,
+         key: "transcript_v2",

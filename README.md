@@ -4,7 +4,15 @@
 
 个人微信通过腾讯 iLink 扫码绑定、HTTPS 长轮询收消息，无需安装 OpenClaw 或开放本地 HTTP 端口。仅接受扫码绑定者的 ClawBot 私聊，不接管普通好友或群聊。企业微信未实现。
 
-## 当前能力
+## 三层模式实现状态
+
+工作树已接入可选 `orchestration.mode=hierarchical`：Bridge/Route 管理会话、原文转发、原件与摘要分离、显式 v4 迁移，以及用量/80% 换代日志。[独立 runtime 兼容候选](docs/THREE_LAYER_RUNTIME_COMPATIBILITY.md) 已通过 `gpt-6-sol / medium` 的真实 M0，完整三层 live 与故障验收仍未完成，生产模式未切换。实现范围与实际证据见 [三层实现状态](docs/THREE_LAYER_IMPLEMENTATION_STATUS.md)，迁移入口见 [迁移说明](docs/THREE_LAYER_MIGRATION.md)。
+
+三层模式不拼接历史 query/reply 或复制历史图片。模型、推理强度、上下文窗口逐字段记录配置来源；业务覆盖不改管理模型。`/debug [requestId]` 只读已保存的请求、执行、摘要和投递状态，不扫描原生历史。配置窗口是请求值，不等于服务端实际能力；真实 1M/80% 长测按用户要求暂缓。
+
+下述能力、目录路由和部署说明适用于未配置 `orchestration` 的既有模式；三层模式以链接中的状态和边界为准。
+
+## 既有模式能力
 
 | 输入或操作 | 行为 |
 |---|---|

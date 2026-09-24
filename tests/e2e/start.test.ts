@@ -28,10 +28,17 @@ for(const xdg of [false,true])test(`start.sh: finds private default config outsi
 });
 test('start.sh: restarts its live instance, recovers a stale lock and preserves JSONL stdout', async t => {
   const h = setup(t), config = path.join(h.root, 'config with spaces.json');
+  // Real launcher builds must not rewrite the shared dist while other test files
+  // copy or import it. Keep this lifecycle test's source/build in its own app.
+  const app = path.join(h.root, 'app'); mkdirSync(app);
+  for (const file of ['start.sh', 'package.json', 'package-lock.json', 'tsconfig.json']) cpSync(path.resolve(file), path.join(app, file));
+  for (const directory of ['src', 'scripts', 'tests']) cpSync(path.resolve(directory), path.join(app, directory), { recursive: true });
+  symlinkSync(path.resolve('node_modules'), path.join(app, 'node_modules'));
+  const isolatedLauncher = path.join(app, 'start.sh');
   writeFileSync(config, JSON.stringify(h.c));
   const lock = path.join(h.c.stateRoot, 'instance.lock');
   const launch = () => {
-    const child = spawn(launcher, [config], {cwd:h.root, stdio:'pipe'});
+    const child = spawn(isolatedLauncher, [config], {cwd:h.root, stdio:'pipe'});
     const exit = once(child, 'exit'); let stdout = '', stderr = '';
     child.stdout.on('data', b => { stdout += b; });
     child.stderr.on('data', b => { stderr += b; });

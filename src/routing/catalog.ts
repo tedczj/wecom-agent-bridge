@@ -8,7 +8,8 @@ import { hash } from './config.ts';
 import { availableModels, executable, resolveModel, validateExecution, type Execution } from './execution.ts';
 export interface Directory { id: string; path: string; identity: string; profile: string; aliases: string[]; description: string }
 export interface DirectoryGrant { directory: Directory; version: string; requestTaskId?: string; approvalMessageId?: string }
-export interface Target { directory: Directory; config: Config; digest: string; execution?: Execution }
+export interface Target { directory: Directory; config: Config; digest: string; execution?: Execution;
+  modelSource?: import('../orchestration/config.ts').ModelSource; modelSources?: import('../orchestration/config.ts').ModelSources; modelProfile?: string }
 export interface Scan { queue: Array<{path: string; depth: number; after?: string}>; deferred: Array<{path: string; depth: number}>; matches: Directory[] }
 const skip = new Set(['.git','node_modules','.cache','__pycache__','.venv','venv','dist','build','target','.next']);
 export function physical(file: string): string { const s = statSync(file); invariant(s.isDirectory(),'DIRECTORY_MISSING'); return `${s.dev}:${s.ino}`; }
@@ -64,11 +65,14 @@ export class Catalog {
       const backend=execution.backend,choices=this.base.routing!.profiles.filter(x=>(x.backend??this.base.backend)===backend);
       invariant(choices.length,'BACKEND_UNAVAILABLE');invariant(choices.length===1,'BACKEND_AMBIGUOUS');p=choices[0]!;
     }
-    const {routing: _routing,...base} = this.base;
+    const {routing: _routing,models: _models,orchestration: _orchestration,...base} = this.base;
     const c = parseConfig({...base,workspace:{id:d.id,path:d.path},backend:p.backend ?? base.backend,agent:{...base.agent,...p.agent},codex:{...base.codex,...p.codex}});
-    if(c.backend==='codex' && (execution?.model || execution?.reasoning)) {
-      if(execution.model)c.codex.model=resolveModel(execution.model,c);
+    if(c.backend==='codex' && (execution?.model || execution?.reasoning || execution?.contextWindowTokens)) {
+      // Hierarchical profiles already supply operator-declared model IDs. The
+      // advisory CLI cache must neither rewrite nor veto them; the backend validates availability.
+      if(execution.model)c.codex.model=this.base.orchestration ? execution.model : resolveModel(execution.model,c);
       if(execution.reasoning)c.codex.reasoning=execution.reasoning;
+      if(execution.contextWindowTokens)c.codex.contextWindowTokens=execution.contextWindowTokens;
       execution={...execution,...(execution.model?{model:c.codex.model}:{})};
     }
     if(execution)executable(c);
@@ -81,7 +85,8 @@ export class Catalog {
     invariant(!inside(d.path,c.agent.env.HOME),'HOME_IN_WORKSPACE');
     for (const root of privatePaths) invariant(!inside(d.path,root) && !inside(root,d.path),'ROUTING_PRIVATE_OVERLAP');
     const identity:unknown[]=[p.version,c,d.identity];
-    if(c.backend==='pi' && (execution?.model || execution?.reasoning))identity.push({model:execution.model,reasoning:execution.reasoning});
+    if(this.base.orchestration && c.backend==='codex')identity.push({nativeProjectTrust:'transient-untrusted-v1',nativeContextWindow:'usable-capacity-v1',nativeWorkspacePermissions:'scoped-git-v1'});
+    if(c.backend==='pi' && (execution?.model || execution?.reasoning || execution?.contextWindowTokens))identity.push({model:execution.model,reasoning:execution.reasoning,...(execution.contextWindowTokens?{contextWindowTokens:execution.contextWindowTokens}:{})});
     return {directory:d,config:c,digest:hash(identity),execution};
   }
   capabilities(): Array<{backend:string;models:string[];reasoning:string[]}> {

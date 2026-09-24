@@ -4,9 +4,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { createInterface } from 'node:readline';
 const args = process.argv.slice(2), mode = process.env.FAKE_MODE ?? 'normal';
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
 if (args[0] === '--version') { console.log('codex-cli TEST-DOUBLE'); process.exit(0); }
+if (args.includes('app-server')) {
+  fs.writeFileSync(path.join(process.env.CODEX_HOME, 'metadata-args.json'), JSON.stringify(args));
+  for await (const line of createInterface({ input: process.stdin })) {
+    const frame = JSON.parse(line); if (!frame.id) continue;
+    if (frame.method === 'initialize') emit({ id: frame.id, result: {} });
+    else if (frame.method === 'model/list' && mode !== 'metadata-hang') {
+      const file = path.join(process.env.CODEX_HOME, 'models_cache.json');
+      const models = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file)).models : [];
+      emit({ id: frame.id, result: { data: models.map(row => ({ id: row.slug, model: row.slug })) } });
+    }
+  }
+  process.exit(0);
+}
 if (args[0] !== 'exec' || !args.includes('--json') || !args.includes('approval_policy="never"') || args.at(-1) !== '-') process.exit(92);
 const home = process.env.CODEX_HOME;
 fs.mkdirSync(home, {recursive:true});
@@ -33,8 +47,13 @@ else if (mode === 'truncated') { process.stdout.write('{"type":"thread.started"'
 else if (mode === 'truncated-late-exit') { process.stdout.end('{"type":"thread.started"'); setTimeout(() => {}, 150); }
 else if (mode === 'bad-order') { emit({type:'turn.completed',usage:{}}); }
 else {
+  if (mode === 'startup-warning') emit({type:'item.completed',item:{id:'notice',type:'error',message:'synthetic startup warning'}});
   emit({type:'thread.started',thread_id:id});
   emit({type:'turn.started'});
+  if (mode === 'reconnecting' || mode === 'reconnect-incomplete') emit({type:'error',message:'Reconnecting... 1/5 (synthetic transport detail FAKE_SECRET)'});
+  if (mode === 'reconnecting') emit({type:'item.completed',item:{id:'notice',type:'error',message:'Falling back from WebSockets to HTTPS transport.'}});
+  if (mode === 'fatal-midturn') emit({type:'error',message:'unrecognized fatal diagnostic FAKE_SECRET'});
+  if (mode === 'rerouted') emit({type:'item.completed',item:{id:'notice',type:'error',message:'model rerouted: requested -> substitute (unavailable)'}});
   history.push(prompt); fs.writeFileSync(sessionFile, JSON.stringify(history));
   if (mode === 'hang' || mode === 'ignore-term' || mode === 'child') {
     const effect = path.join(process.cwd(), 'side-effect.txt');
@@ -45,7 +64,7 @@ else {
       const kid = spawn(process.execPath, ['-e', `setInterval(()=>require('fs').appendFileSync(${JSON.stringify(effect)},'c'),20)`], {stdio:'ignore'});
       fs.writeFileSync(path.join(home,'child.pid'), String(kid.pid));
     }
-  } else if (mode === 'ack-only') { /* exit without terminal event */ }
+  } else if (mode === 'ack-only' || mode === 'reconnect-incomplete') { /* exit without terminal event */ }
   else if (mode === 'fail') { emit({type:'turn.failed',error:{message:'FAKE_SECRET_NEVER_LOG_ME'}}); process.exitCode = 1; }
   else if(mode==='router' && args.includes('--ephemeral')) {
     const request=JSON.parse(prompt),steps=process.env.FAKE_ROUTER_STEPS?JSON.parse(process.env.FAKE_ROUTER_STEPS):undefined;

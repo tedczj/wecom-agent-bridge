@@ -9,19 +9,31 @@ import { BackendStateUnknown, BridgeError, errorCode, invariant, record, log } f
 import { JsonlFramer } from './rpc-jsonl.ts';
 import { readControlled } from './fsutil.ts';
 import { deadline, withSignal } from './async.ts';
+import { resolveCodexWindow } from './codex-window.ts';
+import { workspacePermissionArgs } from './codex-permissions.ts';
 import type { AgentBackend, AgentResult, ImageRef, NormalizedInput, RunHooks, SessionRef } from './types.ts';
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** CLI contract: options precede resume; image options follow the explicit thread ID. */
 export interface RoutingExecution { schemaPath:string;instructionsPath:string }
-export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef, routing?:RoutingExecution): string[] {
+export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef, routing?:RoutingExecution, untrustedProject = !!c.orchestration): string[] {
   invariant(c.agent.args.length === 0, 'CODEX_ARGS_NOT_ALLOWED');
   invariant(c.codex.sandbox === 'read-only' || c.codex.sandbox === 'workspace-write', 'UNSAFE_SANDBOX');
   if (saved) invariant(saved.kind === 'codex' && uuid.test(saved.threadId), 'SESSION_BACKEND_MISMATCH');
-  const args = ['exec', '--json', '--sandbox', c.codex.sandbox, '--cd', c.workspace.path,
-    '--config', 'approval_policy="never"', '--config', `sandbox_workspace_write.network_access=${c.codex.networkAccess}`,
+  const permissions = untrustedProject && c.codex.sandbox === 'workspace-write' ? workspacePermissionArgs(c) :
+    ['--sandbox', c.codex.sandbox, '--config', `sandbox_workspace_write.network_access=${c.codex.networkAccess}`];
+  const args = ['exec', '--json', ...permissions, '--cd', c.workspace.path,
+    '--config', 'approval_policy="never"',
     '--config', 'web_search="disabled"'];
+  // Native exec otherwise persists implicit project trust for workspace-write.
+  // Hierarchical authority comes from the host profile, not project-local config.
+  // Codex splits dotted override keys literally, so encode the path in a TOML table value.
+  if (untrustedProject) args.push('--config', `projects={${JSON.stringify(c.workspace.path)}={trust_level="untrusted"}}`);
   if (c.codex.model) args.push('--model', c.codex.model);
   if (c.codex.reasoning) args.push('--config', `model_reasoning_effort="${c.codex.reasoning}"`);
+  if (c.codex.contextWindowTokens !== undefined) {
+    invariant(Number.isSafeInteger(c.codex.contextWindowTokens) && c.codex.contextWindowTokens > 0, 'EXECUTION_CONTEXT_WINDOW');
+    args.push('--config', `model_context_window=${c.codex.contextWindowTokens}`);
+  }
   if(routing) {
     invariant(!saved && images.length===0 && c.codex.sandbox==='read-only','ROUTER_EXECUTION_POLICY');
     args.push('--ephemeral','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--output-schema',routing.schemaPath,
@@ -65,7 +77,7 @@ async function terminateGroup(child: ChildProcessWithoutNullStreams, graceMs: nu
 export class CodexBackend implements AgentBackend {
   private running = false;
   private active?: { controller: AbortController; done: Promise<void> };
-  constructor(private c: Config, private imageReader?: (image: ImageRef) => Promise<Buffer>,private routing?:RoutingExecution) {}
+  constructor(private c: Config, private imageReader?: (image: ImageRef) => Promise<Buffer>,private routing?:RoutingExecution, private untrustedProject = !!c.orchestration) {}
   async start(): Promise<void> {
     invariant(process.platform !== 'win32', 'PLATFORM_UNSUPPORTED');
     invariant(this.c.backend === 'codex', 'SESSION_BACKEND_MISMATCH');
@@ -97,7 +109,15 @@ export class CodexBackend implements AgentBackend {
     try {
       if (controller.signal.aborted) throw new BridgeError('ABORTED');
       await this.start();
-      const args = codexArgs(this.c, input.images, saved,this.routing);
+      let executionConfig = this.c;
+      if (this.untrustedProject && !this.routing && this.c.codex.contextWindowTokens !== undefined) {
+        timer = setTimeout(() => { timeoutCode = 'CODEX_TASK_TIMEOUT'; controller.abort(); }, this.c.agent.taskTimeoutMs);
+        const window = await resolveCodexWindow(this.c, controller.signal);
+        hooks.contextWindowResolved?.(window);
+        process.stderr.write(JSON.stringify({ event: 'business.context_window_resolved', requestId: input.requestId ?? input.taskId, ...window }) + '\n');
+        executionConfig = { ...this.c, codex: { ...this.c.codex, contextWindowTokens: window.nativeTotalTokens } };
+      }
+      const args = codexArgs(executionConfig, input.images, saved,this.routing,this.untrustedProject);
       for (const image of input.images) {
         // A persisted path alone is never sufficient: validate bytes again immediately before exec.
         const bytes = this.imageReader ? await this.imageReader(image) : await readControlled(path.join(this.c.stateRoot, 'media'), image.localPath, this.c.media.maxImageBytes);
@@ -115,7 +135,7 @@ export class CodexBackend implements AgentBackend {
         writeFileSync(marker, JSON.stringify({ pid: child.pid, backend: 'codex', startedAt: Date.now() }), { flag: 'wx', mode: 0o600 });
         ownsMarker = true;
       }
-      timer = setTimeout(() => { timeoutCode = 'CODEX_TASK_TIMEOUT'; controller.abort(); }, this.c.agent.taskTimeoutMs);
+      timer ??= setTimeout(() => { timeoutCode = 'CODEX_TASK_TIMEOUT'; controller.abort(); }, this.c.agent.taskTimeoutMs);
       startup = setTimeout(() => { timeoutCode = 'CODEX_START_TIMEOUT'; controller.abort(); }, this.c.agent.startupTimeoutMs);
       const collect = async () => {
         let totalBytes = 0;
@@ -127,6 +147,14 @@ export class CodexBackend implements AgentBackend {
           framer.push(chunk as Buffer);
           for (const event of batch) {
             invariant(typeof event.type === 'string', 'CODEX_PROTOCOL');
+            if (event.type === 'item.completed' && record(event.item).type === 'error') {
+              const item = record(event.item);
+              invariant(!completed && !failed, 'CODEX_EVENT_ORDER');
+              invariant(typeof item.message !== 'string' || !item.message.startsWith('model rerouted:'), 'CODEX_MODEL_REROUTED');
+              // In 0.155.1, warning/config/deprecation notices use non-fatal ErrorItem.
+              // They do not satisfy any thread/turn/final completion requirement.
+              if (!this.routing) { hooks.progress({ type: 'codex.warning' }); continue; }
+            }
             if(this.routing && ['item.started','item.completed','item.updated'].includes(event.type)) {
               const item=record(event.item);
               if(item.type==='error') {
@@ -152,14 +180,22 @@ export class CodexBackend implements AgentBackend {
               if (item.type === 'agent_message') {
                 invariant(typeof item.text === 'string', 'CODEX_PROTOCOL');
                 // Some CLI versions expose phase; never surface an explicitly non-final phase.
-                if (item.phase === undefined || item.phase === null || item.phase === 'final_answer') finalText = item.text;
+                if (item.phase === undefined || item.phase === null || item.phase === 'final_answer') {
+                  finalText = item.text; hooks.captureFinal?.(finalText);
+                }
               }
             } else if (event.type === 'turn.completed') {
               invariant(threadSeen && turnStarted && !completed && !failed && !fatal, 'CODEX_EVENT_ORDER'); completed = true;
             } else if (event.type === 'turn.failed') {
               invariant(!completed && !failed, 'CODEX_EVENT_ORDER'); failed = true;
             } else if (event.type === 'error') {
-              fatal = true;
+              const reconnecting = threadSeen && turnStarted && !completed && !failed && typeof event.message === 'string' &&
+                /^Reconnecting\.\.\. (?:[1-9]\d{0,2}\/[1-9]\d{0,2}|waiting for network)(?:$|[ (])/.test(event.message);
+              // Exec flattens app-server retry notifications into `error` events.
+              // Only this known in-turn diagnostic is recoverable; the same process
+              // must still produce a final, turn.completed, exit 0 and cleanup.
+              if (reconnecting) hooks.progress({ type: 'codex.transport_retry' });
+              else fatal = true;
             }
             if (['thread.started', 'turn.started', 'turn.completed', 'turn.failed'].includes(event.type)) hooks.progress({ type: event.type });
           }
@@ -169,6 +205,7 @@ export class CodexBackend implements AgentBackend {
       };
       const collecting = collect();
       void collecting.catch(() => {});
+      hooks.promptSubmitted?.({ textSha256: createHash('sha256').update(input.text).digest('hex'), attachmentHashes: input.images.map(image => image.sha256) });
       promptSent = true;
       child.stdin.end(input.text);
       await withSignal(collecting, controller.signal);
@@ -186,8 +223,8 @@ export class CodexBackend implements AgentBackend {
       }
     } catch (e) {
       const code = spawnError ? 'CODEX_PROCESS_ERROR' : stdinError ? 'CODEX_STDIN_ERROR' : timeoutCode || errorCode(e, 'CODEX_BACKEND_ERROR');
-      const uncertain = promptSent && !spawnError;
-      result = { outcome: uncertain ? 'interrupted' : controller.signal.aborted && !spawnError ? 'cancelled' : 'failed',
+      const uncertain = e instanceof BackendStateUnknown || promptSent && !spawnError;
+      result = { outcome: uncertain ? 'interrupted' : controller.signal.aborted && !timeoutCode && !spawnError ? 'cancelled' : 'failed',
         errorCode: code, sessionRef: ref,
         finalText: uncertain ? `Codex 执行中断（${code}），可能已有修改；工作目录已阻塞，请检查进程和 git diff，未自动重跑。`
           : `Codex 未执行（${code}）。` };
@@ -205,6 +242,7 @@ export class CodexBackend implements AgentBackend {
         result = { outcome: 'interrupted', finalText: '无法确认 Codex 已停止；工作目录已阻塞，请在本地检查。', errorCode: 'BACKEND_STATE_UNKNOWN', sessionRef: ref };
       } finally { this.active = undefined; this.running = false; resolveDone(); }
     }
+    if (result!.outcome === 'success') result!.finishEvidence = { backend: 'codex', threadStarted: true, turnStarted: true, turnCompleted: true, exitCode: 0, cleanupConfirmed: true };
     return result!;
   }
 }

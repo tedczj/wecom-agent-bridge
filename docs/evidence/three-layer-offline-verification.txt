@@ -1,0 +1,20 @@
+Three-layer implementation stage: offline pre-commit verification
+Date: 2026-09-24
+Node: 24.15.0
+npm: 11.12.1
+Branch: dev
+
+npm ci: exit 0; lockfile installation, 18 audited packages.
+Warnings: 1 high dependency vulnerability; mvdan-sh 0.10.1 deprecated.
+No automatic dependency upgrade or audit fix was applied.
+
+Initial npm run check: exit 2, TS2305 in new migration baseline test.
+Fixed the test to use the same SQLite backup typing compatibility as production migration.
+Final npm run check: exit 0.
+Tests: 422; passed: 422; failed: 0; cancelled: 0; skipped: 0; todo: 0.
+
+These are offline checks, including protocol doubles and synthetic fixtures.
+They do not prove live Agent behavior, Weixin delivery, or OS isolation.
+Live acceptance remains incomplete; see THREE_LAYER_IMPLEMENTATION_STATUS.md.
+Real 1M/80% tests are deferred by the operator; phone tests are not run.
+Raw logs, credentials, runtime state, images and model output are excluded.

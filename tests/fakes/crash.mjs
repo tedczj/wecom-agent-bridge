@@ -1,11 +1,13 @@
 // Tests kill this process at an explicitly committed/transactional boundary.
 import fs from 'node:fs';
 import path from 'node:path';
+import { initializeHierarchy } from '../../dist/src/orchestration/schema.js';
 import { Store } from '../../dist/src/store.js';
 import { loadConfig } from '../../dist/src/config.js';
 import { normalize } from '../../dist/src/local.js';
 const [configFile,stage]=process.argv.slice(2),c=loadConfig(configFile);
 const s=new Store(path.join(c.stateRoot,'bridge.sqlite'),c);
+initializeHierarchy(s);
 const frame={id:'crash-request',session:'default',text:'crash task',images:[]};
 const job=s.reserve(normalize(frame,c,'local:codex'),'agent').job;
 fs.writeFileSync(path.join(c.stateRoot,'crash-info.json'),JSON.stringify({id:job.task_id,frame}));

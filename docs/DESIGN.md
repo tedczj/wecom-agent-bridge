@@ -1,62 +1,30 @@
-# Local Agent Bridge — implementation modes
+# Local Agent Bridge — three-layer runtime
 
-## Hierarchical implementation in progress
+Both personal Weixin ClawBot and local CLI/JSONL use `HierarchicalBridge` exclusively. Enterprise WeCom is not implemented. There is no legacy Bridge, Router, intent interpreter or history scanner fallback. Missing configuration and incompatible controller capability evidence refuse startup.
 
-`main.ts` selects `HierarchicalBridge` only for explicit `orchestration.mode=hierarchical` and a complete, matching controller capability proof. An independent [compatibility candidate](THREE_LAYER_RUNTIME_COMPATIBILITY.md) has passed M0 for the observed model/window; the unchanged installed binary has no matching successful proof. Production has not been switched. [Implementation status](THREE_LAYER_IMPLEMENTATION_STATUS.md) identifies implemented components, live observations and remaining acceptance gaps. The [frozen design](THREE_LAYER_AGENT_BRIDGE.md) remains the target contract, not evidence of completion.
+## Requests and roles
 
-The hierarchical path uses v4 raw requests, durable host-bound delegation, separate management sessions and one business worker, immutable answer artifacts, safe recap projections, and runtime-only usage telemetry. Model/effort/window values retain individual sources. No historical text or images are injected into business prompts. Populated v3 state cannot be converted to hierarchical mode; use a separate empty stateRoot. There is no automatic replay or fallback to legacy execution after a capability failure.
+`RequestStore` persists decoded original text and attachment identity before planning. The Bridge controller resolves an authorized directory, then delegates that exact stored request to its persistent Route controller. Route decides whether to read history or submit business execution. Controllers have host-defined tools and cannot execute commands. Slash controls use the same durable host state without invoking a model.
 
-The remaining sections describe the existing non-hierarchical implementation. Their history-injection, schema-v3 and interpreter rules do not describe the new path.
+Project names and aliases take priority over recursive discovery. Discovery is confined to `~/workspace`, intersected with authorized roots. Directory search pages are scoped to conversation, query and configuration and resume across requests. An external directory proposal must appear as an absolute path in the original request. A grant requires explicit same-conversation consent after complete delivery of the question, with expiry, physical identity and profile revalidation.
 
-## Scope and state
+Progress queries such as “看下 term4u 项目里在干啥” reach that directory's Route verbatim. Route reads recent records progressively and reports coverage limits; it need not scan all native history before answering. Query focus and active execution workspace remain distinct. No business job or successful-response clock update is caused by reading history.
 
-Personal Weixin ClawBot and local CLI/JSONL share the Codex/Pi execution engine. Enterprise WeCom is not implemented. This document describes the current implementation; historical snapshots remain in Git history.
+## Models and sessions
 
-Supported: personal Weixin ClawBot text/image messages and supplied voice transcripts; CLI single request and persistent stdin JSONL; Codex exec backend; Pi RPC backend; local PNG/JPEG/WebP; durable requests/sessions/results/outbox; bounded single-worker scheduling; explicit cancellation and local review. Not supported: ordinary Weixin friend/group takeover, WeCom, WebSocket/webhooks, standalone ASR, outbound voice/media, file/video/quote handling, OCR, HTTP API, arbitrary remote users, automatic approvals or Windows process management.
+The fallback business profile and Bridge default to `gpt-6-sol / high`; Route inherits Bridge and recap defaults to the same profile. Window capacity remains explicitly configured and verified by runtime evidence. Business model precedence is request > explicit session preference > directory > daily, tracked per field. Business overrides never mutate management profiles.
 
-The package is `local-agent-bridge` 0.2.0. Existing v3/v4 state is supported in its corresponding mode; v1/v2 is rejected without modification. New deployments use a fresh stateRoot. Historical chat tasks are not translated or automatically replayed.
+`ControllerManager` owns separate Bridge/Route generations, native references and runtime usage. Usage at 80% requests a new session with a bounded handoff; raw answers are not exposed to Bridge. Unknown usage or incomplete capability evidence blocks rather than enabling a fallback. Controller initialization is lazy.
 
-## Boundaries and modules
+`BusinessSessions` validates native ownership, directory/profile identity, completion and writer readiness. Binding takes priority over discovery; automatic reuse requires a successful response within 24 hours. Explicitly selected older history is verified before use. Historical text and images are never injected into the current business prompt.
 
-```text
-Weixin QR login / HTTPS polling       Local CLI run / stdin JSONL
-  -> paired-owner validation           -> fixed local actor + session
-  -> bounded image download/decrypt    -> local image paths
-                  \                   /
-                   reservation / deduplication
-                   validated durable image copies
-                   FIFO single-worker Bridge
-                   Codex exec or Pi RPC
-                   atomic terminal result + outbox
-                  /                   \
-          Weixin text reply        stdout JSONL
-```
+## State and queue
 
-`weixin-api.ts`, `weixin-login.ts`, `weixin-media.ts`, `weixin.ts`: iLink protocol, account binding, bounded remote media and Weixin transport. `config.ts`: strict schema and environment allowlist. `local.ts`: normalization and stdout channel. `media.ts`: safe local image copies, decoding, hash verification and retention. `store.ts`: SQLite state machine and metadata binding. `bridge.ts`: scheduling and controls. `codex.ts` and `pi.ts`: backend contracts. `rpc-jsonl.ts`: bounded byte framing and Pi RPC. `reply.ts`: Unicode-aware output chunks and delivery state. `main.ts`: resource ownership. `cli.ts`: process lifecycle and operator recovery.
+SQLite v4 stores original requests, controller sessions, business bindings/effects, answer artifacts, summaries and scoped query cursors. Only an empty store can initialize v4; a populated old store is rejected unchanged. There is no conversion or import path. A deliberate fresh start deletes instance history after intake stops and pending tasks/deliveries are resolved, preserving Weixin pairing and transport receive position separately.
 
-## Input, identity and queue
+Ingress is deduplicated by authenticated transport identity. One FIFO business worker owns each instance. Global and conversation queue limits are checked before media preparation. Cancellation interrupts the actual runtime; uncertain cleanup blocks further work. Restart revalidates persisted directory/profile/selection/effect snapshots before running queued work and never reruns interrupted work.
 
-A local frame has exactly `{id,session,text,images}`; unknown fields are rejected. Session defaults to `default`; images default to empty. IDs are bounded nonempty identifiers. Text is at most 64 KiB, up to four images are accepted, and slash commands cannot carry attachments. The local endpoint accepts trusted operator input only. Weixin input is separately normalized; a remote sender cannot supply arbitrary local file paths.
-
-Session base key hashes channel, backend, local actor, conversation and workspace ID; generation changes on `/new`. SQLite pins workspace path/ID and actor identity, and separately pins each backend's authentication/session root. Reusing a state database under another identity or home is rejected.
-
-`UNIQUE(channel_id,message_id)` plus a request digest protects idempotency. Identical replay returns the original task. A reused ID with different route/text/image paths fails. If a local image file changes, the operator must use a new request ID; old requests retain their copied immutable input reference.
-
-Local requests check capacity at reservation, before MediaStore preparation. The Weixin receiver first performs bounded remote-image download/decryption, then reserves the job and copies validated media before waiting for the Agent worker. Same-session earlier preparing tasks cannot be overtaken by later ready tasks. Each stateRoot has one worker and one instance lock. Execution also acquires a same-host, same-user lock keyed by the canonical workspace device/inode, independent of stateRoot. Interrupted execution retains this lock for explicit review. Routing mode uses global reservation FIFO, including earlier preparing inputs; legacy mode retains per-session preparation ordering.
-
-## Directory routing and native history
-
-Optional `routing` configuration enables the host-controlled directory/session router described in [BRIDGE_ROUTING_SESSION_RULES.md](BRIDGE_ROUTING_SESSION_RULES.md). Its confirmed R-* rules and BR-01..BR-22 matrix are the authoritative behavior contract. Without this explicit authorization the legacy single-workspace path remains available.
-
-`routing/config.ts` validates roots, profiles, workspaces and optional HTTPS JSON interpreter settings. `catalog.ts` revalidates canonical path and device/inode, separates discovery from execution, searches bounded pages, and treats project metadata as untrusted data. `intent.ts` gives a configured Agent priority for natural language; explicit slash controls bypass inference. Without an interpreter it supports bounded Chinese forms. `codex-interpreter.ts` runs an ephemeral structured-output Codex classifier in a separate empty read-only workspace, using the existing authentication home while ignoring user config/rules and project documents, disabling execution tool configuration and rejecting tool events. HTTP classification remains optional. Interpreter failure never falls back to worker execution. `history.ts` scopes Codex discovery through the native state_5.sqlite threads index when available, validates rollout headers before streaming matching bodies, and reads Pi v3 branches without invoking either backend. Legacy no-cwd records are not assignable to a workspace; unrelated bodies are not parsed. Active/incomplete or profile-mismatched sessions remain readable but are not resumable. Damaged files produce explicit incomplete-list notices and prevent automatic new-session decisions. `router.ts` maintains sticky conversation bindings, versioned aliases, continuation state and historical list snapshots. It also holds pending absolute-path authorization questions and exact-directory grants scoped to the verified conversation. The next explicit consent after confirmed question delivery is required before reading candidate metadata or dispatching work; grants never modify global roots. Request identity, physical identity and profile validation continue at dispatch and restart. `routing/lock.ts` implements the physical workspace mutex; it does not implement OS isolation.
-
-Conversation scope comes only from normalized transport identity. Local routing channel identity is pinned on first enablement rather than changing with the default backend. Session keys additionally bind the complete trusted execution profile digest. Routing preparation is serialized before reservation. A single SQLite transaction commits message identity, selected session, immutable target/profile, conversation state and control reply. Original request identity is preserved; approved work carries a source task reference, and explicitly selected recent materials may be added as marked context. Duplicate requests return before interpretation; failed switches and history failures persist a control result and run no Agent. Profile drift or path replacement at dispatch fails the queued job.
-
-Only successful complete Agent turns update last_response_at, in the result/outbox transaction. Automatic reuse is inclusive at 24 hours; unknown/future timestamps do not qualify. Active/new-unsent sessions remain bound. Explicit selection is recorded separately so an old session survives until the next work submission without falsifying its response time. Existing bindings take precedence over native discovery. Native entries already claimed by another conversation/profile in this Store are excluded; the operator must separate account session roots across independent bridge installations. No global account ownership database is inferred from native UUIDs.
-
-Control reads never alter activeWorkspace. List ordinals use a stored, scoped 15-minute snapshot; search and result pages continue through `下一页` / `/more`. Explicit resume rechecks ownership, directory/profile and native availability. A missing bound session confirmed before prompt submission creates a new session with an explicit result notice; other discovery errors block. Pi native assistant messages do not prove `agent_settled`, so only bridge-verified successes supply an automatic-reuse timestamp for Pi.
-
-Global interruption blocking remains conservative across configured workspaces. Creating a new session never clears it. `/cancel taskId` and `/result taskId` in routing mode may address another workspace's task in the same authenticated conversation, preserving cross-user denial. Pure routing controls reject attachments. No message aggregation, implicit task replay, arbitrary shell, new listener or permission escalation is introduced.
+Immutable answer artifacts carry completion evidence. Recaps and delivery are separate stages; summary failure cannot fabricate successful completion. Unknown send acknowledgement is never blindly retried. Same-user physical-directory locks supplement per-instance locking but are not OS isolation.
 
 ## Image processing
 
@@ -133,4 +101,4 @@ The verified paired user (or trusted local operator) may propose `/update` or `/
 
 ## Remote diagnostics
 
-`/debug [task-id-or-prefix]` bypasses the planner and worker. It reads only tasks owned by the normalized conversation, returns bounded routing diagnostics and delivery aggregates through the existing outbox, and performs one bounded native scan per distinct current/listed workspace after catalog revalidation. It never changes bindings, resumes work or retries delivery. As the next message it consumes pending consent without granting it. Request-time diagnostics are persisted in job input, including failed routing; old jobs explicitly have no snapshot. Current observations cannot establish historical causes. Files are identified only by truncated SHA-256 fingerprints, with at most eight error samples per scan and six recent scan records per request. Original history verification and fail-closed execution rules are unchanged.
+`orchestration/debug.ts` reads scoped saved requests, tool audits, execution, artifacts, recap and outbox metadata. It never reads native history, invokes models or retries work. Query/answer bodies, paths and transport credentials are excluded.

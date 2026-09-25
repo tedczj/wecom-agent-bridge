@@ -1,14 +1,20 @@
-# 当前验证记录：三层实现进行中
+# 当前验证记录：统一三层入口（2026-09-25）
 
-## 本次清理检查（2026-09-24）
+旧 Bridge、Router、临时意图解释器、旧历史扫描器、专用诊断和三个旧 smoke 脚本已删除。保留目录授权/模型选择/目录锁、原生历史读取、Codex/Pi 后端、媒体和 outbox。`routing.interpreter` 明确拒绝，入口不再有旧链路回退。
 
-按用户要求删除完整解析审计工具和数据迁移代码。保留直接断言、证据导出、报告校验、空状态建库及已有 v3/v4 对应模式读取。设计包与原 58 验收 ID 保留；LIVE-24 迁移实现已移除，编号保留并返回 `DATA_MIGRATION_REMOVED`；远端写入全局断言缺证据仍为 BLOCKED。
+- `npm ci --no-audit --no-fund`：exit 0，按 lockfile 安装 16 个包，未升级依赖。
+- `npm run check`：类型检查、构建及 **317/317 OFFLINE PASS**，0 failed/cancelled/skipped。CLI、微信协议、启动、取消、维护和排队恢复用例均接三层测试入口；临时分类器专属测试退役。原 58 验收 ID 全部保留，见 [测试映射](TEST_MATRIX.md)。
+- 新回归覆盖项目名称/别名优先、原文透传、查询不启动业务、同目录 Route 复用、分页进度持久化、业务覆盖不改变管理模型，以及普通搜索仅在 `~/workspace`、显式外部路径仍受权限约束。
+- 真实 `gpt-6-sol / high` 能力探测 **PASS**：create/resume、动态工具、实际受限工具集合、禁止原生压缩、图片、取消、writer busy→idle、进程清理。有效窗口 **828400**；证明绑定兼容 binary、登录配置和该模型参数。
+- 真实隔离进展链路 **PASS**：合成 term4u 项目建立 1 次业务记录；随后“看下 term4u 项目里在干啥”和续查均原文透传、复用同一 Route、未新增业务执行、未更新业务回复时间。原生 `turn_context` 确认 business/Bridge/Route 均为 **gpt-6-sol / high**。初轮与最终复测分别记录，未发送微信消息。
+- 本机旧接收进程停止前、停止后均核对没有运行任务、pending/sending/unknown 投递或 Agent 标记。删除旧 `bridge.sqlite` 及 WAL/SHM、`routing-agent`、媒体、实例 Agent 产物和 supervisor 状态，未导入或转换任何旧历史。空库初始化为 **v4，0 任务、0 请求、0 管理会话**；微信配对和传输位置保留并校验，项目文件和 `~/.codex` 原生业务会话未删除。
+- 本机配置已清除遗留目录模型默认覆盖，业务兜底、Bridge、Route、摘要统一 **gpt-6-sol / high**。启动日志确认 `mode=hierarchical`、`schemaVersion=4` 和 `微信接收已启动`；核对一组 supervisor/worker、唯一接收 worker。管理会话按首条新请求懒初始化，隔离测试已验证新建与复用。
 
-- `npm ci --no-audit --no-fund` 成功，按 lockfile 安装；已移除 mvdan-sh，未执行依赖升级或 npm audit。
-- 解析审计清理后检查 **393/393 PASS**。首次类型检查发现证据导出的残留引用，修正后通过，初始日志保留。
-- 数据迁移清理后 `npm run check` **392/392 PASS**，0 failed/cancelled/skipped；详见 [脱敏检查摘要](evidence/three-layer-offline-verification.txt)；完整日志在忽略的 runtime/cleanup-check.txt。
-- 本次均为 OFFLINE 检查，没有运行 live LLM 或微信消息测试，不代表完整 live 验收。
-- [源码 SHA-256 清单](source-manifest.sha256)已按清理后的源码和测试更新。历史 live 证据只对应原候选，不改写为本次结果；详见 [三层实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。
+本次没有手机端到端验收；没有真实 1M/80% 长测，也不将局部模型验证宣称为完整三层故障矩阵、视觉泛化或 OS 隔离通过。原生业务 Codex 未替换；管理层使用 [兼容构建](THREE_LAYER_RUNTIME_COMPATIBILITY.md)。
+
+[脱敏证据摘要](evidence/three-layer-only-verification.txt)与[当前源码清单](source-manifest.sha256)记录本次范围。完整输出仅保存在忽略的 `runtime/three-layer/high-cutover/`：`check-final.txt`、`reset-evidence.json`、`startup-evidence.json`、`service-final.log`；能力探测 `probe/3feddbbb-f702-45b5-a86d-d7827eb79d06/`；最终链路 `final-progress/f49e1382-fcf5-43e6-b3f3-798a47669605/`。实施过程的失败日志保留，最终结果不覆盖此前失败记录。
+
+以下均为旧候选的历史记录，旧脚本、旧入口及旧测试计数不代表现行实现。
 
 ## 此前验证记录：远程 debug
 

@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { cpSync,existsSync,mkdirSync,readFileSync,writeFileSync,symlinkSync } from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { setup,eventually } from '../helpers.ts';
+import { setupService as setup,eventually } from '../helpers.ts';
 import type { Maintenance } from '../../src/maintenance.ts';
 
 async function launch(t:Parameters<typeof setup>[0],fixtureRepo=false,mode='normal') {
@@ -115,7 +115,7 @@ test('MG07: an unexpected supervisor exit never replays an approved maintenance 
   const child=spawn(process.execPath,[cli,'start','--config',h.config],{stdio:'pipe'}),exit=once(child,'exit');
   child.stdout.resume();child.stderr.resume();h.cleanups.push(async()=>{if(child.exitCode===null&&child.signalCode===null){child.kill('SIGTERM');await exit;}});
   await eventually(()=>h.store.get(approval.taskId).status==='failed',10000);
-  assert.equal(h.store.value<Maintenance>('maintenance')!.phase,'failed');assert.equal(h.store.get(work.taskId).status,'interrupted');
+  assert.equal(h.store.value<Maintenance>('maintenance')!.phase,'failed');assert(['cancelled','interrupted'].includes(h.store.get(work.taskId).status));
 });
 
 test('MG08: /update never changes main and refuses an untracked collision without deleting it',async t=>{

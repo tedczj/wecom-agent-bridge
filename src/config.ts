@@ -76,7 +76,7 @@ export function parseConfig(value: unknown): Config {
     media: { maxImages: integer(m.maxImages, 4, 1, 4), maxImageBytes: integer(m.maxImageBytes, 10485760, 64, 20971520), maxTotalBytes: integer(m.maxTotalBytes, 20971520, 64, 41943040), maxPixels: integer(m.maxPixels, 20000000, 1, 40000000), maxTotalPixels: integer(m.maxTotalPixels, 40000000, 1, 80000000), retentionHours: integer(m.retentionHours, 24, 1, 168) },
     agent: { command: absolute(a.command), args, env: env as Record<string,string>, passEnv, sessionRoot,
       startupTimeoutMs: integer(a.startupTimeoutMs, 30000, 1, 120000), taskTimeoutMs: integer(a.taskTimeoutMs, 900000, 1, 3600000), cancelGraceMs: integer(a.cancelGraceMs, 5000, 1, 30000), killGraceMs: integer(a.killGraceMs, 2000, 1, 10000), maxFrameBytes: integer(a.maxFrameBytes, 8388608, 256, 67108864), maxStreamBytes: integer(a.maxStreamBytes, 134217728, 1024, 536870912), isolation: isolation as Config['agent']['isolation'] },
-    codex: { home, sandbox, model: x.model === undefined ? undefined : str(x.model), reasoning: x.reasoning as Config['codex']['reasoning'],
+    codex: { home, sandbox, model: x.model === undefined ? 'gpt-6-sol' : str(x.model), reasoning: (x.reasoning ?? 'high') as Config['codex']['reasoning'],
       ...(x.contextWindowTokens === undefined ? {} : { contextWindowTokens: integer(x.contextWindowTokens, 1, 1, Number.MAX_SAFE_INTEGER) }), networkAccess: bool(x.networkAccess, false) },
     reply: { chunkBytes: integer(r.chunkBytes, 65536, 128, 1048576), minIntervalMs: integer(r.minIntervalMs, 0, 0, 60000), maxAutoParts: integer(r.maxAutoParts, 20, 1, 100), maxResultBytes: integer(r.maxResultBytes, 1048576, 128, 1048576), sendTimeoutMs: integer(r.sendTimeoutMs, 15000, 1, 60000) },
   };

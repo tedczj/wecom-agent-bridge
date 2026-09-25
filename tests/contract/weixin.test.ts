@@ -4,7 +4,7 @@ import { createCipheriv, createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync, symlinkSync,mkdirSync,writeFileSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { setup, output, eventually } from '../helpers.ts';
+import { setupService as setup, output, eventually } from '../helpers.ts';
 import { apiBase, WeixinApi, type Fetch, type WeixinAuth } from '../../src/weixin-api.ts';
 import { loadOrLogin, saveAuth, weixinLogin } from '../../src/weixin-login.ts';
 import { decryptImage, downloadImage, imageUrl } from '../../src/weixin-media.ts';
@@ -222,7 +222,7 @@ test('W16: paired Weixin debug delivers redacted report once without invoking an
   await h.receiver.accept({...request,from_user_id:'stranger'},signal);await h.service.settle();assert.equal(sends.length,0);
   await h.receiver.accept(request,signal);await h.service.settle();const count=sends.length;assert(count>0);
   assert(sends.every(msg=>msg.to_user_id===auth.userId));
-  const text=sends.map(msg=>msg.item_list[0].text_item.text).join('');assert.match(text,/Bridge debug v1/);
+  const text=sends.map(msg=>msg.item_list[0].text_item.text).join('');assert.match(text,/"requests":/);
   assert(!text.includes(auth.token));assert(!text.includes(request.context_token));assert(!text.includes(h.root));
   await h.receiver.accept(request,signal);await h.service.settle();assert.equal(sends.length,count);
   assert.equal(h.service.store.db.prepare("SELECT count(*) n FROM jobs WHERE kind='agent'").get()!.n,0);

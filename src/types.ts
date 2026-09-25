@@ -15,7 +15,6 @@ export interface NormalizedInput {
   requestId?: string; sourceRequestId?: string; rawQuerySha256?: string;
   taskId: string; messageId: string; route: Route; receivedAt: number;
   text: string; images: ImageRef[]; workspaceId: string; sessionKey: string; generation: number;
-  routingDiagnostic?: import('./routing/router.ts').RoutingDiagnostic;
   originalText?: string; attachmentCount?: number; contextTaskIds?: string[];
   routing?: { directory: import('./routing/catalog.ts').Directory; digest: string; reason: string; execution?: import('./routing/execution.ts').Execution; announce?: boolean; authorizedRequestTaskId?: string;
     modelSource?: import('./orchestration/config.ts').ModelSource; modelSources?: import('./orchestration/config.ts').ModelSources; modelProfile?: string };

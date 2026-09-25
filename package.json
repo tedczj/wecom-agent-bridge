@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "npm run build && node --test dist/tests/unit/*.test.js dist/tests/contract/*.test.js dist/tests/e2e/*.test.js",
+    "test": "rm -rf dist && npm run build && node --test dist/tests/unit/*.test.js dist/tests/contract/*.test.js dist/tests/e2e/*.test.js",
     "test:unit": "npm run build && node --test dist/tests/unit/*.test.js",
     "test:contract": "npm run build && node --test dist/tests/contract/*.test.js",
     "test:e2e": "npm run build && node --test dist/tests/e2e/*.test.js",
@@ -18,12 +18,10 @@
     "bridge": "npm run build --silent && node dist/src/cli.js",
     "smoke:codex": "npm run build --silent && node dist/scripts/smoke-agent.js codex",
     "smoke:pi": "npm run build --silent && node dist/scripts/smoke-agent.js pi",
-    "smoke:routing": "npm run build --silent && node dist/scripts/smoke-routing.js",
-    "smoke:planner": "npm run build --silent && node dist/scripts/smoke-planner.js",
-    "smoke:authorization": "npm run build --silent && node dist/scripts/smoke-authorization.js",
     "smoke:maintenance": "npm run build --silent && node dist/scripts/smoke-maintenance.js",
     "probe:controller": "npm run build --silent && node dist/scripts/probe-controller.js",
-    "test:live": "npm run build --silent && node dist/scripts/live-orchestration.js"
+    "test:live": "npm run build --silent && node dist/scripts/live-orchestration.js",
+    "smoke:progress": "npm run build --silent && node dist/scripts/smoke-progress.js"
   },
   "dependencies": {
     "qrcode-terminal": "0.12.0",

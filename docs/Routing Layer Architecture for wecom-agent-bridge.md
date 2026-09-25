@@ -1,5 +1,8 @@
 # Routing Layer Architecture for `wecom-agent-bridge`
 
+> 历史设计记录：旧临时分类/固定回复实现已删除。当前行为以 README.md、DESIGN.md 和 THREE_LAYER_AGENT_BRIDGE.md 为准；本文不作为现行启动或配置说明。
+
+
 ## Executive summary
 
 The `dev` branch is already much closer to a safe multi-agent substrate than a “simple agent per directory” description suggests. As of the reviewed `dev` snapshot, the bridge has durable SQLite jobs/sessions/outbox state, exact backend-session references, cancellation and uncertain-execution handling, environment filtering, bounded media handling, Codex and Pi adapters, and explicit taint/review semantics. Its principal architectural limitation for this project is that **one running configuration is intentionally bound to one workspace and one backend**, and its `Store` metadata, session keys, queue, process marker, and blocked-workspace state all assume that single-workspace boundary. fileciteturn1file0L1-L13 fileciteturn4file0L1-L7 fileciteturn6file0L1-L7

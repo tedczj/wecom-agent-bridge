@@ -81,6 +81,7 @@ test('OFFLINE M5: revision-bound completion cache orders complete coverage and i
     const file = path.join(root, id + '.jsonl'); files.push(file);
     writeFileSync(file, [
       { type: 'session_meta', payload: { id, cwd: f.workspace } },
+      { type: 'turn_context', payload: { cwd: f.workspace, model: f.c.codex.model, effort: f.c.codex.reasoning } },
       { type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn' } },
       { type: 'event_msg', timestamp: new Date(1000 + i * 1000).toISOString(), payload: { type: 'task_complete', turn_id: 'turn', last_agent_message: 'final' } },
     ].map(row => JSON.stringify(row) + '\n').join(''));

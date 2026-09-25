@@ -143,15 +143,20 @@ export class HierarchicalBridge {
       const { request, duplicate } = this.store.atomic(() => {
         const result = this.requests.accept(incoming);
         if (!result.duplicate && !incoming.text.trim().startsWith('/')) {
+          invariant(!this.store.blocked(), 'WORKSPACE_BLOCKED');
           const pending = this.store.db.prepare(`SELECT count(*) n FROM orchestration_requests r LEFT JOIN jobs j ON j.task_id=r.job_task_id
             WHERE r.phase IN ('accepted','media_preparing','bridge_planning','route_planning') OR r.phase='awaiting_business' AND j.status IN ('preparing','queued')`).get() as { n: number };
           invariant(pending.n <= this.c.queue.maxPendingGlobal, 'QUEUE_FULL');
+          const conversationPending = this.store.db.prepare(`SELECT count(*) n FROM orchestration_requests r LEFT JOIN jobs j ON j.task_id=r.job_task_id
+            WHERE r.conversation_scope=? AND (r.phase IN ('accepted','media_preparing','bridge_planning','route_planning') OR r.phase='awaiting_business' AND j.status IN ('preparing','queued'))`).get(result.request.conversation_scope) as { n: number };
+          invariant(conversationPending.n <= this.c.queue.maxPendingPerSession, 'QUEUE_FULL');
         }
         return result;
       });
       if (duplicate) return { taskId: request.request_id, duplicate: true };
       log('request.accepted', { taskId: request.request_id });
       const maintenance = this.store.value<Maintenance>('maintenance'), approval = ['/approve', '同意授权'].includes(request.raw_query.trim());
+      if (!approval) this.authority.cancelConsent(request.conversation_scope);
       if (maintenance?.phase === 'approval' && maintenance.route === request.route_json && !approval) this.store.put('maintenance', { ...maintenance, phase: 'failed', code: 'APPROVAL_CANCELLED' });
       if (maintenanceActive(maintenance) && !/^\/(?:status|debug|cancel|result|help)(?:\s|$)/.test(request.raw_query.trim())) {
         await this.systemAnswer(request, '服务正在等待更新或重启，未接收新工作；可用 /status 查看。', 'failed', 'MAINTENANCE_DRAINING');
@@ -287,7 +292,7 @@ export class HierarchicalBridge {
     const handlers: ToolHandlers = {
       ...shared(), list_directories: async () => ({ directories: this.directories(scope), ...readConversationState(this.store, scope), forcedDirectoryRef }),
       search_directories: async args => {
-        const found = await this.authority.catalog(scope).search(args.query as string);
+        const found = await this.authority.search(scope, args.query as string);
         for (const directory of found.scan.matches) this.directoryCache.set(scope + ':' + directory.id, directory);
         return { directories: found.scan.matches.map(d => ({ directoryRef: d.id, name: d.id, aliases: d.aliases, description: d.description })), partial: found.partial };
       },
@@ -579,6 +584,7 @@ export class HierarchicalBridge {
     const [command, ...args] = incoming.text.trim().split(/\s+/); let text: string, rawHistory = false;
     const signal = AbortSignal.any([this.shutdown.signal, ...(this.aborts.get(request.request_id) ? [this.aborts.get(request.request_id)!.signal] : [])]);
     try {
+      invariant(incoming.media.length === 0, 'COMMAND_MEDIA_UNSUPPORTED');
       if (command === '/approve' || command === '同意授权') {
         invariant(!args.length, 'COMMAND_ARGUMENTS');
         const maintenance = this.store.value<Maintenance>('maintenance');
@@ -690,7 +696,13 @@ export class HierarchicalBridge {
         const part = resultParts(rows[0]!.request_id, raw.toString('utf8'), this.c.reply.chunkBytes)[Number(args[1] ?? 1) - 1]; invariant(part, 'RESULT_PART_INVALID'); text = part;
       } else invariant(false, 'UNSUPPORTED_COMMAND');
       await this.systemAnswer(request, text, 'completed', undefined, command === '/result' || rawHistory);
-    } catch (error) { await this.fail(request, errorCode(error), false); }
+    } catch (error) {
+      this.authority.cancelConsent(request.conversation_scope);
+      const maintenance = this.store.value<Maintenance>('maintenance');
+      if ((command === '/approve' || command === '同意授权') && maintenance?.phase === 'approval' && maintenance.route === request.route_json)
+        this.store.put('maintenance', { ...maintenance, phase: 'failed', code: errorCode(error) });
+      await this.fail(request, errorCode(error), false);
+    }
   }
   private async sessionList(request: OriginalRequest, directory: Directory, cursor?: string, query?: string): Promise<string> {
     const target = this.target(this.authority.catalog(request.conversation_scope).validate(directory), request.conversation_scope);

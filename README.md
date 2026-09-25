@@ -4,87 +4,40 @@
 
 个人微信通过腾讯 iLink 扫码绑定、HTTPS 长轮询收消息，无需安装 OpenClaw 或开放本地 HTTP 端口。仅接受扫码绑定者的 ClawBot 私聊，不接管普通好友或群聊。企业微信未实现。
 
-## 三层模式实现状态
+## 运行方式
 
-工作树已接入可选 `orchestration.mode=hierarchical`：Bridge/Route 管理会话、原文转发、原件与摘要分离，以及用量/80% 换代日志。[独立 runtime 兼容候选](docs/THREE_LAYER_RUNTIME_COMPATIBILITY.md) 已通过 `gpt-6-sol / medium` 的真实 M0，完整三层 live 与故障验收仍未完成，生产模式未切换。实现范围与实际证据见 [三层实现状态](docs/THREE_LAYER_IMPLEMENTATION_STATUS.md)。三层模式仅初始化空状态或打开已有 v4 库，不提供数据迁移。
+微信和本地 CLI/JSONL 统一经过 Bridge Agent → 目录对应的 Route Session Agent → 按需执行业务 Agent。服务只创建 `HierarchicalBridge`；缺少 `models`、`routing`、`orchestration` 或匹配的运行时能力证明时拒绝启动。旧 Bridge、临时分类器、旧历史扫描器和固定回复链路已删除，`routing.interpreter` 明确报 `ROUTING_INTERPRETER_REMOVED`。
 
-三层模式不拼接历史 query/reply 或复制历史图片。模型、推理强度、上下文窗口逐字段记录配置来源；业务覆盖不改管理模型。`/debug [requestId]` 只读已保存的请求、执行、摘要和投递状态，不扫描原生历史。配置窗口是请求值，不等于服务端实际能力；真实 1M/80% 长测按用户要求暂缓。
+业务兜底和 Bridge 默认 `gpt-6-sol / high`，Route 继承 Bridge，摘要默认复用 Bridge 配置。业务的请求覆盖和显式会话偏好不会改变管理模型。`contextWindowTokens` 必须填写已验证的有效容量；当前本机探测为 828400，不代表真实 1M/80% 长测通过。实际证据见 [verification.md](docs/verification.md)。
 
-下述能力、目录路由和部署说明适用于未配置 `orchestration` 的既有模式；三层模式以链接中的状态和边界为准。
+查询“看下 term4u 项目里在干啥”先按项目名称或别名定位，把用户原文交给 term4u Route。Route 按需读取近期记录回答，后续查询复用该管理会话；查询不启动业务、不刷新业务回复时间，也不要求先完整扫描全部历史。普通工作和连续业务对话才委派业务 Agent。不会拼接历史 query/reply 或复制历史图片到新请求。
 
-## 既有模式能力
+## 输入与目录
 
 | 输入或操作 | 行为 |
 |---|---|
-| 微信文字 | 持久化排队，调用 Agent，以文字回复 |
-| 微信图片 / 图文 | 从微信 CDN 有界下载、按需 AES 解密，完整校验后原生传给 Agent |
-| 微信语音 | 使用微信附带的 `voice_item.text`；没有转写文本时提示改发文字，未接额外 ASR |
-| 文件、视频、引用消息 | 明确回复暂不支持，不作为完整任务执行 |
-| 连续对话 | 同一微信账号会话延续；`/new` 开始新会话；启用 routing 后按目录/profile 绑定及 24 小时规则续接 |
-| 重复消息 | 同一消息 ID 去重，不重复执行已有任务 |
-| 本地输入 | 单次 `run` 或持续 stdin JSONL `serve` |
+| 微信文字、图文 | 身份校验、持久化、媒体准备、三层处理、文字回复 |
+| 微信语音 | 使用微信附带转写；没有转写则明确提示 |
+| 文件、视频、引用消息 | 明确回复暂不支持 |
+| 重复消息 ID | 去重，不重复执行或发送已确认结果 |
+| 本地输入 | `run` 单次请求或 `serve` 持续 JSONL |
 
-回复目前只包含文字，没有语音合成或图片/文件发送。执行失败、取消和超时都可能已经产生副作用。
+`routing.roots` 是目录授权边界；普通发现限定在 `~/workspace`。先匹配项目名称和别名，再进行有界目录搜索；同一会话的相同搜索保留分页进度。外部绝对路径必须由用户明确提出，未授权路径需通过同会话 `/approve` 授权，授权前不读取目录内容。授权只覆盖该物理目录，不改变沙箱或扩大根权限；配置变化、路径替换、过期或问题未完整送达均拒绝。
 
-## 微信远程诊断
-
-在 ClawBot 对话发送 `/debug` 查看当前目录、最近查询目录及最近六个本对话任务；发送 `/debug 任务ID` 定位一个任务，支持唯一的 8 位前缀或完整 ID。该命令绕过路由模型，不启动 Agent、不切换目录、不重试失败任务。报告通过持久化 outbox 分段返回，后续可用 `/result` 取回。
-
-报告区分请求当时的路由快照和当前只读历史扫描：包括逻辑目录 ID、文件指纹、历史来源、错误码/数量、扫描是否未完成、任务是否启动和投递状态。旧版本任务没有当时快照，不能从当前扫描反推旧故障。扫描只覆盖当前目录及最近历史列表目录，每个目录一次有界扫描，不自动继续；文件错误样本最多八个。`startupCheckout` 是进程启动时 Git SHA，不能证明构建产物或服务端模型。不会返回绝对路径、用户原文、模型正文、rollout 原文、账号身份、token 或媒体 URL/key。
-
-远端升级：依次发送 `/update`、等提示后下一条发送 `/approve`，等待更新完成回执，再发送 `/debug`；`/update` 已包含检查和重启，无需另发 `/restart`。远端必须已有支持管理命令的 `start` 管理进程。`/debug` 也算下一条消息，会取消待确认的目录/服务管理操作，不能插在确认之前。
-
-## 可选目录路由与历史会话
-
-[完整规则与实施设计](docs/BRIDGE_ROUTING_SESSION_RULES.md)保留 BR-01..BR-22。[config.routing.example.json](config.routing.example.json) 提供多目录配置模板；将私有配置放在所有执行目录之外，填写实际路径后使用原有 `--config` / `start.sh` 入口。旧配置保持单目录，不自动扩大扫描权限；无需重建微信登录。
-
-启用 `routing` 后，首条消息使用默认目录。之后保持当前目录，只有明确切换才改变；24 小时只决定自动续接，不重置目录。目录授权 roots 与执行 profiles 分离；根级 profile 是 operator 对根下新目录的执行授权，可以省略以禁止自动继承。配置变更需重启，已排队任务的 profile 摘要不匹配会失败，不会改派。
-
-请求涉及尚未授权的绝对路径时，bridge 先显示目录完整路径和待处理请求，询问是否授权。只有提示完整送达后，同一对话在 15 分钟内的下一条消息回复 `/approve` 或明确回复“同意授权”（也接受“确认授权”“同意”“确认”或 `yes`）才继续；拒绝、含糊回复、带附件的确认或过期均不授权、不执行。授权前只校验路径和既有执行配置，不读取候选目录内容。新授权目录采用默认工作区所属的最具体 root 的 profile 作为兜底，不继承当前工作区的 profile；该 root 没有 profile 时明确阻断。询问中展示默认模型/推理设置，原请求明确指定的执行参数仍优先。授权保存在当前对话的私有状态中，重启后可用，不改全局 roots，也不授权父目录、兄弟目录或子目录作为新路由目标。每次使用仍校验物理目录身份；routing 配置变更会使旧授权失效。原请求是工作任务时，确认后以新会话执行原请求，保留确认消息与原请求的关联；历史查询仍不切目录、不启动 worker。含图片的首次越权请求会要求先单独完成目录授权，再重新发送图片任务。
-
-| 用户表达 | 行为 |
+| 控制命令 | 行为 |
 |---|---|
-| `去配音`、`切回微信桥`、`/route video` | 按别名/描述/授权目录定位；纯切换不调用 worker |
-| `去配音，先别改，只检查` | 定位后将原文交给该目录的 Agent |
-| `参考一下视频项目的实现` | 保持当前目录；并不额外授予参考目录读取权限 |
-| `开个新会话`、`/new` | 新建逻辑会话；不取消正在执行的任务 |
-| `重新跑一下测试` | 正常任务，按当前会话规则继续 |
-| `video 有哪些历史会话`、`/sessions video` | 查询该目录，不切目录；默认显示十条 |
-| `/find 关键词`、`下一页` | 搜索授权历史，包括十条以前的记录；或继续查询 |
-| `看看第二个`、`继续第二个` | 阅读或选择最近列表快照中的会话；恢复后下一条任务可续接超过 24h 的历史 |
-| `当前目录简称微信桥`、`/alias 微信桥` | 保存有版本和来源的 scoped 别名 |
-| `先停一下`、`/cancel [taskId]` | 取消本对话任务；停止不确定仍阻塞 |
+| `/route 目录`、`/alias 简称` | 切换目录或保存当前目录别名 |
+| `/sessions [目录]`、`/find 关键词` | 查询原生历史，不启动业务 |
+| `/read 序号`、`/more`、`/resume 序号` | 读取、分页或显式选择已验证会话 |
+| `/new [目录]` | 准备新业务会话，不取消正在执行的任务 |
+| `/status`、`/debug [requestId]` | 查询宿主保存状态，不调用模型或扫描原生历史 |
+| `/cancel [requestId]`、`/result requestId [part]` | 取消任务或领取已保存原件 |
 
-配置 `routing.interpreter` 后，普通自然语言优先由 Agent 识别意图；程序校验目录/profile、会话归属和执行条件。显式 slash 命令直接处理。模型失败会明确报错，不降级为把原话交给工作 Agent。可复用现有 Codex 登录：
+每个目录保留独立 Route 会话和业务绑定；原生历史由 `src/history/` 按需读取。未知或不完整历史不能当作空历史自动执行业务。`/debug` 只返回脱敏的请求、执行、摘要、投递元数据，不含原文、路径、凭据或媒体密钥。
 
-```json
-"interpreter": {
-  "provider": "codex",
-  "model": "gpt-5.6-terra",
-  "reasoning": "high",
-  "timeoutMs": 90000
-}
-```
+## 从新状态启动
 
-此方式要求基础 backend 为 Codex，并使用支持 `--ignore-user-config`、`--ephemeral`、`--output-schema` 的已安装 CLI。路由 Agent 使用独立空目录、只读沙箱和结构化输出；不加载用户 Codex 配置或项目文档，关闭 shell、图片查看、MCP、应用/插件和子 Agent 配置，拒绝任何执行工具事件。登录仍使用原有 Codex home。它可以通过结构化请求让宿主查询目录、会话列表/摘要和可用执行配置，再结合结果规划；每条消息最多四次不同的只读查询。这些约束不是完整 OS 隔离证明。
-
-支持组合表达，例如“找到 OCR 项目，用 Codex 的 terra high 新起 session，结合刚才截图排查，只检查不修改”。目录可以是授权 root 下未逐项登记的项目，继承根级执行配置；不用为每个目录或模型组合新增 profile。backend 从已有 profiles 中选择（对应已配置的可执行程序/登录/隔离），模型和推理强度可以在对话里覆盖。Codex 的模型简称按本机模型缓存唯一匹配；没有缓存时只接受完整模型 ID，由后端验证。Pi 在 prompt 前通过 RPC 查询可用模型并验证实际模型和 thinking level。不可用/歧义参数显式失败，不替换成默认模型。执行设置按对话和目录保存，重启后保留；改变设置会创建独立会话，已排队任务保持原配置。
-
-路由可看到同一对话保留期内最近六条消息的有界原文、结果摘要、图片数量及状态。用户提到“刚才截图/上述材料”时，规划结果选择具体消息 ID；宿主校验归属后复制真实图片并传递带来源的背景，保留当前原话，不把历史材料当作新指令。新会话可以显式携带这些材料；“不要之前上下文”会清除后续规划可引用的旧消息范围。图片仍受现有数量、大小、像素与保留期限制，缺失或超限会明确失败。此能力不等于支持微信原生引用消息，也不提供无限聊天记忆。
-
-实际工作开始时，组合请求的目录和请求模型配置通过持久化 outbox 告知，最终结果也保留执行环境。会话空结果显示查询目录、历史来源和筛选词；完成状态显示“最近一轮已完成”，不宣称整个 session 永久结束。粘贴包含 session/目录关键词的排障材料应作为工作内容，只有实际查询会话的请求才进入历史查询。
-
-也保留 `provider:"http"`：配置 `endpoint`（HTTPS Chat Completions JSON 接口）、`model`、可选 `reasoning:"high"`、`apiKeyEnv` 和 `timeoutMs`。密钥仅在宿主读取。未配置解释器时才使用内置表达式规则，不声称理解任意口语。无论哪种方式，解释器只接收有界用户上下文和候选目录说明，不接收 worker 全部历史或微信 token。
-
-例如“查询 ocr service 的 GPT session 当前状态”应查询 OCR 历史，不切换当前目录，也不启动工作任务。列表展示活动状态；执行中/不完整会话可以阅读，但不能恢复。原生历史优先使用配置 Codex home 下 `state_5.sqlite` 的 cwd 索引定位 `sessions` rollout，再重新校验文件头；索引不可用/格式不支持时走目录扫描。已知没有 cwd 的旧版文件不作为任何项目的可恢复历史，其他目录的正文不解析。匹配项目按 JSONL 流式读取（256 MiB/文件、8 MiB/帧），单个坏文件保留不完整提示，不能据此自动新建任务。模型/推理配置不一致的历史仍可查看，但不自动恢复。
-
-Pi 原生文件不能证明 `agent_settled`，自动续接时间仍只来自 bridge 验证成功的回复。`history:false` 明确关闭原生发现，仅保留 bridge 会话。schema v2 事务升级为 v3，旧回复时间未知；跨模式排队任务不自动执行。不同账户应使用不同 session root。
-
-`npm run smoke:authorization -- --live --config FILE` 在临时目录、独立本地状态和只读工作 Agent 上验证授权询问、下一条明确同意、原请求执行及去重；不授权生产目录，也不发送微信消息。
-
-`npm run smoke:routing -- --live --config FILE` 仅调用路由 Agent 并只读查询 OCR 历史，不执行工作任务、不发微信消息；默认无 `--live` 拒绝运行。
-
-同一 bridge 全局串行；同用户、同宿主的多个 bridge 对同一真实目录还使用独占锁。执行中断后锁保留，`review --acknowledge-side-effects` 检查进程后清理本实例锁。外部 CLI、其他用户和脱离进程组的副作用不在该锁的保证内。
+只初始化空状态或打开已有 v4 库，不转换旧库、不导入旧绑定。清空旧实例时先停止接收并确认没有运行任务或未决投递，再删除该实例历史库、绑定、查询游标、答案摘要及关联运行产物。保留微信配对和传输接收位置，避免旧消息重收；不删除项目或 `~/.codex` 原生业务会话。Bridge/Route 按新请求懒初始化。
 
 ## 安装与配置
 
@@ -96,17 +49,27 @@ npm run check
 cp config.example.json config.local.json
 ```
 
-编辑 `config.local.json` 的占位路径：
+编辑 `config.local.json` 的占位路径，并配置三层管理运行时：
 
 | 字段 | 用途 |
 |---|---|
-| `transport` | `weixin` 为个人微信；`local` 为本地入口。省略时兼容旧配置，取 `local` |
+| `transport` | `weixin` 为个人微信；`local` 为本地入口。省略时取 `local` |
 | `workspace.path` | Agent 工作目录，需存在；Codex 使用时应为 Git 仓库 |
 | `agent.command` | `command -v codex` 得到的可执行文件绝对路径，不是 shell 命令 |
 | `agent.env.HOME` | Agent 使用的 HOME，与所选登录环境保持一致 |
 | `stateRoot` | 私有状态目录，不能位于工作目录内 |
 | `codex.home` | 已登录的 Codex 配置/认证/会话目录，不能位于工作目录内 |
 | `codex.sandbox` | 默认 `read-only`；需要修改工作区时设为 `workspace-write` |
+
+管理运行时必须使用通过受限工具/禁止原生压缩探测的 Codex app-server；参考 [运行时兼容说明](docs/THREE_LAYER_RUNTIME_COMPATIBILITY.md)。先执行：
+
+```bash
+npm run probe:controller -- --live --config config.local.json --out runtime/controller-probe
+# 只有 PASS 时，将输出目录内 runtime-lock.json 放到 orchestration.controllerRuntime.workRoot。
+./start.sh config.local.json
+```
+
+证明绑定 binary、登录配置、模型、推理级别和窗口；任何变化都需要匹配证明。Pi 只替换业务后端，管理层仍需此运行时。
 
 若准备专用 Codex 目录，登录时使用同一目录：
 
@@ -148,7 +111,7 @@ Pi 的本地配置参考 [config.pi.example.json](config.pi.example.json)。Pi �
 ./start.sh --backend pi /absolute/path/to/pi-config.json
 ```
 
-脚本默认先查仓库中的 `config.local.json`，不存在时查 `${XDG_CONFIG_HOME:-$HOME/.config}/wecom-agent-bridge/config.local.json`。启用目录路由时推荐将私有配置放在后者，避免位于执行目录内。`--backend pi` 以同样顺序查找 `config.pi.weixin.local.json`，`--backend codex` 查找 `config.local.json`。显式指定文件时只使用指定路径，后端参数必须与文件一致，不会改写配置。缺少或不匹配依赖时运行 `npm ci`，每次启动前构建。
+脚本默认先查仓库中的 `config.local.json`，不存在时查 `${XDG_CONFIG_HOME:-$HOME/.config}/wecom-agent-bridge/config.local.json`。推荐将私有配置放在后者，避免位于执行目录内。`--backend pi` 以同样顺序查找 `config.pi.weixin.local.json`，`--backend codex` 查找 `config.local.json`。显式指定文件时只使用指定路径，后端参数必须与文件一致，不会改写配置。缺少或不匹配依赖时运行 `npm ci`，每次启动前构建。
 
 `start` 入口现在启动常驻管理进程及桥接子进程。已有实例时，核对实例锁、PID、父子关系与启动命令，再停止匹配的子进程和管理进程；保留有界 SIGTERM / SIGKILL 处理，管理操作进行中拒绝外部并发重启。跨配置替换必须显式指定 `--backend`，且状态目录、工作目录、操作者与 transport 一致。其他后端有未完成任务时拒绝切换；不迁移、不重跑任务。按 Ctrl-C 停止。
 
@@ -180,7 +143,7 @@ npm run bridge -- run --config config.cli.local.json --session demo --message '�
 
 构建后，程序调用可以直接使用 `node dist/src/cli.js serve --config config.cli.local.json`。stdout 为 JSONL；日志及构建提示写 stderr。stdin 关闭时等待已接收任务处理完毕再退出。本地 stdout 写入成功只表示流接受数据，不代表下游业务已持久化。
 
-每个 stateRoot 只有一个 Agent worker。多个实例间没有工作目录级互斥，不应同时操作同一个工作目录。
+每个 stateRoot 只有一个 Agent worker。同用户同宿主的实例使用物理目录互斥锁；外部 CLI 和脱离进程组的副作用不在锁的保证内。
 
 ## 状态、取消与恢复
 

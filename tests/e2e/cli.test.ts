@@ -5,7 +5,7 @@ import { once } from 'node:events';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
-import { setup, eventually } from '../helpers.ts';
+import { setupService as setup, eventually } from '../helpers.ts';
 import { deadline } from '../../src/async.ts';
 function start(args: string[]) {
  const child=spawn(process.execPath,['dist/src/cli.js',...args],{stdio:'pipe'});

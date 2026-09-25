@@ -15,7 +15,7 @@
 - 在本机内存中，把私有配置、已绑定账号和运行状态中的真实敏感值与候选发布文件作精确比较；不输出这些值、不复制到审查报告或仓库。
 - 重新生成当前离线证据并替换本机临时路径/PID。实际消息、模型输出和媒体不进入证据文件。
 
-本次阶段提交重新扫描候选内容：个人真实绝对路径、私钥头、常见 API key/JWT 均无命中；在内存中与本地配置及认证中提取的 4 个实际敏感值比较，无匹配。提交索引单独检查，排除 runtime、认证、本地配置、数据库、媒体和模型输出。更早的“56 个文件 / 21 个私有值”扫描不代替本次检查。
+本次统一三层入口提交检查候选索引中的文件路径、凭据格式和本机实际敏感值；私有配置、认证、运行库和完整模型日志均保持忽略。公开验证摘要只保留模型、计数、验证结论和本地证据相对位置，实际 PID 仅保留在私有启动证据中。历史扫描计数不代替本次发布检查。
 
 此前 Pi 配置保留在被忽略的 `*.local.json` 中，启动包装器、沙箱 profile、会话及本地 smoke 结果保留在仓库外的私有运行目录。本轮已按 operator 请求修改私有联网/兜底配置并修正已有授权的 profile 关联，这些私人部署文件、备份及运行状态均未纳入提交。公开验证仅记录版本、结果和受限探针结论，不包含模型回答、认证内容或本机绝对路径。
 
@@ -35,18 +35,18 @@
 
 ## 路由数据边界
 
-routing_state 中的 active directory、版本化别名、历史预览、列表快照与搜索 continuation 都属于私有状态，不提交仓库。HTTP 解释器密钥从 operator 指定环境变量读取；Codex 解释器使用原有认证 home，但忽略用户工具配置，采用 ephemeral 会话。没有解释器配置时不会发出解释器请求。配置后会把当前用户路由文本、有限近期用户上下文和有界项目说明发给选定模型；不传 bot/context token、native 全部历史或 worker 工具输出。根授权和执行 profile 仍由宿主控制，不能由模型返回值扩大。根外精确目录可由同一对话下一条明确同意授权；待授权问题、目录绝对路径、目录身份、原请求/确认消息关联和授权记录同属私有 routing_state，不纳入公开证据或配置模板。
+routing_state 中的目录绑定、别名、授权和查询游标属于私有状态。Bridge/Route 管理会话接收当前请求原文和角色允许的有界目录/历史记录，业务请求不拼接历史原文或图片；不向管理模型提供 bot/context token。旧 HTTP/Codex 临时解释器已删除，旧 interpreter 配置拒绝加载。目录权限与执行 profile 由宿主控制，模型不能扩大授权。根外路径的授权问题、物理目录身份、原请求与确认关联同属私有状态，不纳入公开证据或配置模板。
 
 workspace 锁位于宿主用户临时私有目录，记录 bridge PID、stateRoot 和随机锁 token；它不是可发布证据。测试清理只删除精确属于各自合成 fixture 的锁，不清除生产锁。新增公开配置示例仅含占位路径/模型示例，不使用现有私人配置。
 
-本次修复的真实验证仅公开请求模型/推理配置、识别动作、目录逻辑 ID、会话数量和活动状态计数。没有复制真实 rollout、消息预览、微信截图或模型原文到仓库；一次成功分类也不声称证明最终服务端模型路由。私有 interpreter 配置、登录信息与现场启动日志均不提交。
+本次真实验证仅公开模型/推理配置、有效窗口、查询原文透传与 Route 复用结论、业务执行次数和清理结果。没有复制真实 rollout、消息预览、微信截图或模型原文到仓库；隔离模型验证和微信手机验收分别记录。登录信息与现场完整启动日志不提交。
 
 管理进程的身份令牌、PID、就绪标记、更新阶段与原对话关联、运行产物备份均位于私有 stateRoot，不纳入提交。`/status` 仅展示管理动作、阶段、任务 ID、受限错误码与版本，不展示令牌。更新命令不继承完整宿主环境，且不向 Git/npm 转发模型 API 凭据。
 
 ## Remote debug reports
 
-`/debug` is available only after normal transport identity verification and can inspect tasks from that same conversation. Reports include logical workspace IDs, path fingerprints, allowlisted error codes, task/scan/delivery states and startup checkout SHA. They exclude absolute paths, original messages, model output, native history text, authentication/context tokens, media URLs/keys and raw exceptions. Request-time snapshots remain private job state; diagnostic reports remain private command results and outbox payloads. Public verification uses synthetic fixtures only. Fingerprints are identifiers for correlation, not anonymization guarantees.
+`/debug` is available only after normal transport identity verification and reads saved request, execution, artifact/recap and delivery metadata in that conversation. It performs no native-history scan or model call. Reports exclude absolute paths, original messages, model output, native history text, authentication/context tokens, media URLs/keys and raw exceptions. Diagnostic reports remain private command results and outbox payloads; public verification uses synthetic fixtures only.
 
 ### Isolated native-history fault tests
 
-LIVE-14 creates a private business native home. Its temporary authentication snapshot contains only the currently valid access/id token and account identifier; it excludes the real refresh token and other credentials. The source authentication file is read-only. The snapshot directory is 0700, the auth file is 0600, and cleanup removes auth.json after the owned services close. Credentials and test homes remain ignored and are never publication artifacts. Test evidence records hashes, permission checks, failure codes and cleanup state, never token contents. The three completed LIVE-14 homes were scanned after cleanup: no access-token residue was found. This applies to this test workflow; the migration tool still does not copy credentials.
+LIVE-14 creates a private business native home. Its temporary authentication snapshot contains only the currently valid access/id token and account identifier; it excludes the real refresh token and other credentials. The source authentication file is read-only. The snapshot directory is 0700, the auth file is 0600, and cleanup removes auth.json after the owned services close. Credentials and test homes remain ignored and are never publication artifacts. Test evidence records hashes, permission checks, failure codes and cleanup state, never token contents. The three completed LIVE-14 homes were scanned after cleanup: no access-token residue was found. This applies to this historical test workflow. There is no data migration tool.

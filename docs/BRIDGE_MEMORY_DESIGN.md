@@ -1,5 +1,8 @@
 # Bridge memory：目标设计与可验证实施方案
 
+> 历史设计记录：旧临时分类/固定回复实现已删除。当前行为以 README.md、DESIGN.md 和 THREE_LAYER_AGENT_BRIDGE.md 为准；本文不作为现行启动或配置说明。
+
+
 日期：2026-09-22。状态：基于已确认产品规则的推荐方案，待实现；不表示已有功能或已完成测试。
 
 前置契约：[目录、路由与 session 规则](BRIDGE_ROUTING_SESSION_RULES.md)。上游证据：[memory 源码调研](BRIDGE_MEMORY_RESEARCH.md)。现有代码基线 `535915eae17f46ad986e21d3a721ecb58ff1e735`；当前行为仍以 `DESIGN.md` 为准。

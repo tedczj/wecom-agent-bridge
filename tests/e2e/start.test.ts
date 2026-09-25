@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, symlinkSync, cpSync } from 'node:fs';
 import path from 'node:path';
-import { setup, eventually, input } from '../helpers.ts';
+import { setupService as setup, eventually, input } from '../helpers.ts';
 
 const launcher = path.resolve('start.sh');
 for(const xdg of [false,true])test(`start.sh: finds private default config outside repository (XDG=${xdg})`,async t=>{

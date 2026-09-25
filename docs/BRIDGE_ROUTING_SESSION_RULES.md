@@ -1,5 +1,8 @@
 # Bridge agent：目录定位、路由与会话规则
 
+> 历史设计记录：旧临时分类/固定回复实现已删除。当前行为以 README.md、DESIGN.md 和 THREE_LAYER_AGENT_BRIDGE.md 为准；本文不作为现行启动或配置说明。
+
+
 状态：已实现并通过离线验收；已验证一次真实路由 Agent 识别与原生历史读取，微信端修复后交付尚未验收，证据见 verification.md。
 日期：2026-09-22。
 审查基线：`5a5c488`（dev）。

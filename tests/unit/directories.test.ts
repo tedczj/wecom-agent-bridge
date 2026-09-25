@@ -18,9 +18,13 @@ function harness(t: Parameters<typeof setup>[0]) {
   const requests = new RequestStore(store), directories = new Directories(c, store);
   const request = (text: string, conversation = 'default') => requests.accept(normalize(fixture(text, conversation), c, 'local:codex')).request;
   const propose = () => {
-    const source = request('work in outside'); requests.transition(source.request_id, source.conversation_scope, ['accepted'], 'bridge_planning');
+    const source = request('work in ' + outside); requests.transition(source.request_id, source.conversation_scope, ['accepted'], 'bridge_planning');
     const consent = directories.propose(source.conversation_scope, source.request_id, outside);
-    requests.transition(source.request_id, source.conversation_scope, ['bridge_planning'], 'completed'); return { source, consent };
+    requests.transition(source.request_id, source.conversation_scope, ['bridge_planning'], 'completed');
+    const incoming = normalize(fixture(source.raw_query), c, 'local:codex');
+    store.reserve(incoming, 'command', undefined, source.request_id); store.complete(source.request_id, 'succeeded', 'approval question');
+    store.db.prepare("UPDATE outbox SET state='sent' WHERE task_id=?").run(source.request_id);
+    return { source, consent };
   };
   return { ...f, c, outside, store, requests, directories, request, propose };
 }
@@ -37,7 +41,7 @@ test('OFFLINE directory consent: proposal grants nothing; explicit same-scope ap
   assert.equal(h.directories.resolve(reply.conversation_scope, approved.directory.id).path, h.outside);
   assert.throws(() => h.directories.resolve(foreign.conversation_scope, h.outside), /DIRECTORY_UNAUTHORIZED/);
   assert.throws(() => h.directories.approve(reply.conversation_scope, reply.request_id), /AUTHORIZATION_EXPIRED/);
-  assert.equal(h.store.db.prepare('SELECT count(*) n FROM jobs').get()!.n, 0);
+  assert.equal(h.store.db.prepare("SELECT count(*) n FROM jobs WHERE kind='agent'").get()!.n, 0);
 });
 test('OFFLINE directory consent: replaced directory and changed profile invalidate approval', t => {
   const h = harness(t), { source } = h.propose(), reply = h.request('/approve');
@@ -61,4 +65,24 @@ test('OFFLINE aliases: scope, configured names and deletion tombstones remain au
   const reopened = new Directories(h.c, h.store);
   assert.equal(reopened.resolve(source.conversation_scope, 'child alias').path, child);
   assert.equal(reopened.resolve(source.conversation_scope, discovered.id).path, child);
+});
+
+for (const state of ['pending', 'sending', 'unknown', 'failed']) test(`AUTH03: ${state} consent delivery cannot grant access`, t => {
+  const h = harness(t), { source } = h.propose(), reply = h.request('/approve');
+  h.store.db.prepare('UPDATE outbox SET state=? WHERE task_id=?').run(state, source.request_id);
+  assert.throws(() => h.directories.approve(reply.conversation_scope, reply.request_id), /AUTHORIZATION_NOT_DELIVERED/);
+  assert.throws(() => h.directories.resolve(reply.conversation_scope, h.outside), /DIRECTORY_UNAUTHORIZED/);
+});
+test('AUTH03/06: expired consent, changed configuration and private directories fail closed', t => {
+  const h = harness(t), { source, consent } = h.propose(), reply = h.request('/approve');
+  h.store.put('directory-consent:' + source.conversation_scope, { ...consent, expiresAt: 0 });
+  assert.throws(() => h.directories.approve(reply.conversation_scope, reply.request_id), /AUTHORIZATION_EXPIRED/);
+  const request = h.request(h.c.codex.home); h.requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'bridge_planning');
+  assert.throws(() => h.directories.propose(request.conversation_scope, request.request_id, h.c.codex.home), /DIRECTORY_PRIVATE|ROUTING_PRIVATE_OVERLAP/);
+  h.c.routing!.profiles[0]!.version = 'changed';
+  assert.throws(() => h.directories.approve(reply.conversation_scope, reply.request_id), /PROFILE_CHANGED/);
+});
+test('AUTH01: a model cannot propose an external path absent from the original user query', t => {
+  const h = harness(t), request = h.request('inspect project'); h.requests.transition(request.request_id, request.conversation_scope, ['accepted'], 'bridge_planning');
+  assert.throws(() => h.directories.propose(request.conversation_scope, request.request_id, h.outside), /DIRECTORY_EXPLICIT_PATH_REQUIRED/);
 });

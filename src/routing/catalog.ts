@@ -1,11 +1,12 @@
 import path from 'node:path';
-import { lstatSync, realpathSync, statSync } from 'node:fs';
+import os from 'node:os';
+import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs';
 import { opendir } from 'node:fs/promises';
 import { configSources, parseConfig, preparePaths, type Config } from '../config.ts';
 import { inside, readControlled } from '../fsutil.ts';
 import { invariant } from '../errors.ts';
 import { hash } from './config.ts';
-import { availableModels, executable, resolveModel, validateExecution, type Execution } from './execution.ts';
+import { executable, resolveModel, validateExecution, type Execution } from './execution.ts';
 export interface Directory { id: string; path: string; identity: string; profile: string; aliases: string[]; description: string }
 export interface DirectoryGrant { directory: Directory; version: string; requestTaskId?: string; approvalMessageId?: string }
 export interface Target { directory: Directory; config: Config; digest: string; execution?: Execution;
@@ -89,13 +90,11 @@ export class Catalog {
     if(c.backend==='pi' && (execution?.model || execution?.reasoning || execution?.contextWindowTokens))identity.push({model:execution.model,reasoning:execution.reasoning,...(execution.contextWindowTokens?{contextWindowTokens:execution.contextWindowTokens}:{})});
     return {directory:d,config:c,digest:hash(identity),execution};
   }
-  capabilities(): Array<{backend:string;models:string[];reasoning:string[]}> {
-    return this.base.routing!.profiles.map(p=>{
-      const c={...this.base,backend:p.backend??this.base.backend,agent:{...this.base.agent,...p.agent},codex:{...this.base.codex,...p.codex}};
-      return {backend:c.backend,models:c.backend==='codex'?availableModels(c):[],reasoning:['minimal','low','medium','high','xhigh']};
-    });
+  initialScan(): Scan {
+    const boundary = path.join(os.homedir(), 'workspace');
+    const roots = this.roots.flatMap(r => inside(boundary, r.path) ? [r.path] : inside(r.path, boundary) && existsSync(boundary) ? [boundary] : []);
+    return {queue:[...new Set(roots)].map(root => ({path:root,depth:0})),deferred:[],matches:[]};
   }
-  initialScan(): Scan { return {queue:this.roots.map(r => ({path:r.path,depth:0})),deferred:[],matches:[]}; }
   async metadata(d: Directory): Promise<string> {
     this.validate(d);
     const parts = [d.description];
@@ -106,10 +105,13 @@ export class Catalog {
     return parts.join('\n').slice(0,8000);
   }
   async search(query: string, scan = this.initialScan(), budget = 200): Promise<{scan: Scan; partial: boolean}> {
+    const boundary = path.join(os.homedir(), 'workspace');
+    const named = this.directories.filter(d => inside(boundary, d.path) && score(query, d) >= 70);
+    if (named.length) return {scan:{queue:[],deferred:[],matches:named.map(d => this.validate(d))},partial:false};
     const start = Date.now(); let entries = 0;
     if (!scan.queue.length && scan.deferred.length) { scan.queue = scan.deferred.map(x => ({...x,depth:0})); scan.deferred = []; }
     while (scan.queue.length && entries < budget && Date.now()-start < 2000) {
-      const node = scan.queue.shift()!; this.authorize(node.path);
+      const node = scan.queue.shift()!; invariant(inside(boundary, node.path), 'DIRECTORY_DISCOVERY_SCOPE'); this.authorize(node.path);
       const dir = await opendir(node.path); let exhausted = true;
       // Resume re-enumeration by name with a bounded per-directory sorted page.
       const names: string[] = [];

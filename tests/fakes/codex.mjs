@@ -66,19 +66,18 @@ else {
     }
   } else if (mode === 'ack-only' || mode === 'reconnect-incomplete') { /* exit without terminal event */ }
   else if (mode === 'fail') { emit({type:'turn.failed',error:{message:'FAKE_SECRET_NEVER_LOG_ME'}}); process.exitCode = 1; }
-  else if(mode==='router' && args.includes('--ephemeral')) {
-    const request=JSON.parse(prompt),steps=process.env.FAKE_ROUTER_STEPS?JSON.parse(process.env.FAKE_ROUTER_STEPS):undefined;
-    const cases=process.env.FAKE_ROUTER_CASES?JSON.parse(process.env.FAKE_ROUTER_CASES):{};
-    const result=cases[request.text]??steps?.[request.context?.observations?.length??0]??(process.env.FAKE_ROUTER_JSON?JSON.parse(process.env.FAKE_ROUTER_JSON):{action:process.env.FAKE_ROUTER_ACTION??'list',query:process.env.FAKE_ROUTER_QUERY??'second',selector:null,alias:null,execute:null});
-    if(result.contextIds==='latest-image')result.contextIds=request.context.recent.filter(x=>x.images>0).slice(-1).map(x=>x.id);
-    emit({type:'item.completed',item:{id:'answer',type:'agent_message',text:JSON.stringify(result)}});
-    emit({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}});
-  }
   else {
     emit({type:'item.completed',item:{id:'reasoning',type:'reasoning',text:'PRIVATE_CHAIN_NOT_A_RESULT'}});
     emit({type:'item.completed',item:{id:'tool',type:'command_execution',command:'FAKE_SECRET_NEVER_LOG_ME',aggregated_output:'TOOL_OUTPUT_NOT_A_RESULT',status:'completed',exit_code:0}});
     if (mode !== 'empty') {
       const text = mode === 'long' ? '中文🛰️'.repeat(10000) : JSON.stringify({reply:prompt,history,imageHashes});
+      const nativeRoot = path.join(home, 'sessions'); fs.mkdirSync(nativeRoot, { recursive: true });
+      const nativeFile = path.join(nativeRoot, id + '.jsonl');
+      if (resume < 0) fs.writeFileSync(nativeFile, JSON.stringify({type:'session_meta',payload:{id,cwd:process.cwd()}})+'\n');
+      const option = name => args.find(a => a.startsWith(name + '='))?.slice(name.length+1).replaceAll('"','');
+      for (const row of [{type:'turn_context',payload:{cwd:process.cwd(),model:args[args.indexOf('--model')+1],effort:option('model_reasoning_effort')}},
+        {type:'event_msg',payload:{type:'task_started'}},
+        {type:'event_msg',timestamp:new Date().toISOString(),payload:{type:'task_complete',last_agent_message:text}}]) fs.appendFileSync(nativeFile,JSON.stringify(row)+'\n');
       emit({type:'item.completed',item:{id:'answer',type:'agent_message',text}});
     }
     emit({type:'turn.completed',usage:{input_tokens:1,cached_input_tokens:0,output_tokens:1}});

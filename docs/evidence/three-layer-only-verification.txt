@@ -1,0 +1,30 @@
+Three-layer-only cutover verification
+Date: 2026-09-25
+Branch: dev
+
+npm ci --no-audit --no-fund: exit 0, 16 packages from lockfile.
+npm run check: exit 0, 317 tests / 317 pass / 0 fail / 0 cancelled / 0 skipped.
+Original acceptance IDs retained: 58.
+No production fake backend or capability fallback.
+
+Deleted old Bridge, Router, ephemeral classifier, old history scanner, old debug, and their dedicated smoke scripts.
+Kept directory authority/model selection/physical locks, native history reader, business Codex/Pi, media and delivery.
+
+Live high capability probe: PASS. Model gpt-6-sol; effort high; effective context 828400.
+Probe ID: 3feddbbb-f702-45b5-a86d-d7827eb79d06.
+Final isolated progress chain: PASS. Case directory: f49e1382-fcf5-43e6-b3f3-798a47669605.
+One synthetic business execution; two original progress queries; one Route identity reused; business clocks unchanged.
+Native turn_context observed gpt-6-sol/high for business, Bridge and Route.
+
+Local old intake stopped with zero active work and zero pending/sending/unknown delivery.
+Old instance history DB and associated runtime artifacts deleted; no data import/conversion.
+Pairing and transport receive position preserved; project files and native business history untouched.
+New schema v4; initial jobs, requests, sessions, bindings, answers and outbox all zero.
+Management sessions initialize lazily on new requests.
+Verified one supervisor and one receiver worker; process IDs retained only in private startup evidence.
+Startup log: mode=hierarchical; schemaVersion=4; Weixin receiver started.
+Business/Bridge/Route/recap configured gpt-6-sol/high; 828400 usable tokens.
+
+NOT RUN: phone Weixin end-to-end; true 1M/80% test; full live fault matrix.
+Offline doubles, live synthetic model evidence and deployment readiness are distinct.
+Private logs/artifacts stay under ignored runtime/three-layer/high-cutover/.

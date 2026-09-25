@@ -3,7 +3,7 @@
   "backend": "codex",
   "workspace": {
     "id": "bridge",
-    "path": "/absolute/path/to/projects/bridge"
+    "path": "/absolute/path/to/home/workspace/bridge"
   },
   "stateRoot": "/absolute/path/to/private/bridge-state",
   "local": {
@@ -21,13 +21,16 @@
   "codex": {
     "home": "/absolute/path/to/private/codex-home",
     "sandbox": "read-only",
-    "networkAccess": false
+    "networkAccess": false,
+    "model": "gpt-6-sol",
+    "reasoning": "high",
+    "contextWindowTokens": 828400
   },
   "routing": {
     "roots": [
       {
         "id": "projects",
-        "path": "/absolute/path/to/projects",
+        "path": "/absolute/path/to/home/workspace",
         "profile": "codex-read"
       }
     ],
@@ -35,15 +38,13 @@
       {
         "id": "codex-read",
         "version": "1",
-        "codex": {
-          "reasoning": "medium"
-        }
+        "codex": {}
       }
     ],
     "workspaces": [
       {
         "id": "bridge",
-        "path": "/absolute/path/to/projects/bridge",
+        "path": "/absolute/path/to/home/workspace/bridge",
         "profile": "codex-read",
         "aliases": [
           "微信桥"
@@ -52,7 +53,7 @@
       },
       {
         "id": "video",
-        "path": "/absolute/path/to/projects/video",
+        "path": "/absolute/path/to/home/workspace/video",
         "profile": "codex-read",
         "aliases": [
           "配音",
@@ -61,12 +62,64 @@
         "description": "视频配音项目"
       }
     ],
-    "history": true,
-    "interpreter": {
-      "provider": "codex",
-      "model": "gpt-5.6-terra",
+    "history": true
+  },
+  "models": {
+    "daily": {
+      "model": "gpt-6-sol",
       "reasoning": "high",
-      "timeoutMs": 90000
+      "contextWindowTokens": 828400
+    }
+  },
+  "orchestration": {
+    "mode": "hierarchical",
+    "controllerRuntime": {
+      "kind": "codex-app-server",
+      "transport": "stdio",
+      "command": "/absolute/path/to/probed-codex-controller",
+      "home": "/absolute/path/to/dedicated-codex-home",
+      "workRoot": "/absolute/path/to/private/bridge-state/controllers",
+      "requireCapabilityProbe": true,
+      "nativeAutoCompaction": "disabled"
+    },
+    "bridge": {
+      "modelProfile": "daily"
+    },
+    "route": {
+      "inheritModelFrom": "bridge",
+      "initialization": "lazy"
+    },
+    "business": {
+      "defaultModelProfile": "daily"
+    },
+    "rotation": {
+      "thresholdNumerator": 4,
+      "thresholdDenominator": 5,
+      "usageSource": "runtime-only",
+      "mode": "new-session-with-handoff"
+    },
+    "query": {
+      "mode": "verbatim",
+      "injectHistoricalContext": false
+    },
+    "answers": {
+      "root": "/absolute/path/to/private/bridge-state/artifacts",
+      "maxOriginalBytes": 16777216,
+      "shortAnswerMaxChars": 1200,
+      "recapMaxChars": 1000,
+      "recapModelProfile": "daily",
+      "bridgeCanReadOriginal": false
+    },
+    "history": {
+      "defaultInteractionLimit": 30,
+      "defaultSessionLimit": 10,
+      "maxOriginalPageBytes": 16384
+    },
+    "limits": {
+      "maxControllerDecisionsPerRequest": 12,
+      "controllerDecisionTimeoutMs": 180000,
+      "passiveChildWaitUsesBusinessDeadline": true,
+      "businessWorkers": 1
     }
   }
 }

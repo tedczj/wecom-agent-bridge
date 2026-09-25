@@ -139,7 +139,7 @@ test('OFFLINE complete singleton discovery: verify only that external target bef
   const f = setup(t), h = configured(f), id = randomUUID(), turnId = randomUUID(), root = path.join(f.c.codex.home, 'sessions');
   mkdirSync(root); const completedAt = new Date(h.now() - 1000).toISOString();
   const records = [{ type: 'session_meta', payload: { id, cwd: f.workspace } },
-    { type: 'turn_context', payload: { cwd: f.workspace, model: 'gpt-6-sol', effort: 'medium' } },
+    { type: 'turn_context', payload: { cwd: f.workspace, model: f.c.codex.model, effort: f.c.codex.reasoning } },
     { type: 'event_msg', payload: { type: 'task_started', turn_id: turnId } },
     { type: 'event_msg', timestamp: completedAt, payload: { type: 'task_complete', turn_id: turnId, last_agent_message: 'synthetic unit history' } }];
   const file = path.join(root, id + '.jsonl'); writeFileSync(file, records.map(row => JSON.stringify(row)).join('\n') + '\n');

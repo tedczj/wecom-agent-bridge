@@ -1,8 +1,9 @@
-import { mkdtempSync, mkdirSync, rmSync, realpathSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { controllerPolicy } from '../src/controllers/codex-app-server.ts';
+import { mkdtempSync, mkdirSync, rmSync, realpathSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { Writable } from 'node:stream';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { TestContext } from 'node:test';
 import { parseConfig, preparePaths } from '../src/config.ts';
 import { Store } from '../src/store.ts';
@@ -59,4 +60,35 @@ export function output() {
 export async function eventually(condition: () => boolean, ms = 2000): Promise<void> {
   const deadline = Date.now() + ms;
   while (!condition()) { if (Date.now() > deadline) throw new Error('condition timed out'); await new Promise(r=>setTimeout(r,10)); }
+}
+
+/** Offline-only service fixture. The proof matches a deterministic executable, never real Codex. */
+export function setupService(t: TestContext, backend: 'codex' | 'pi' = 'codex', mode = 'normal') {
+  const h = setup(t, backend, mode);
+  configureOfflineHierarchy(h.c);
+  if (backend === 'pi') { h.c.agent.env.FAKE_MODEL = 'gpt-6-sol'; h.c.agent.env.FAKE_WINDOW = '828400'; }
+  return h;
+}
+export function configureOfflineHierarchy(c: ReturnType<typeof parseConfig>): void {
+  const example = JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
+  example.orchestration.controllerRuntime = { ...example.orchestration.controllerRuntime,
+    command: path.resolve('tests/fakes/hierarchical-controller.mjs'), home: c.codex.home, workRoot: path.join(c.stateRoot, 'controllers') };
+  example.orchestration.answers.root = path.join(c.stateRoot, 'artifacts');
+  c.models = { daily: { model: 'gpt-6-sol', reasoning: 'high', contextWindowTokens: 828400 } };
+  Object.assign(c, parseConfig({ ...c, orchestration: example.orchestration, routing: {
+    roots: [{ id: 'root', path: c.workspace.path, profile: 'default' }],
+    profiles: [{ id: 'default', version: '1' }], workspaces: [{ ...c.workspace, profile: 'default' }] } }));
+  const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+  const runtime = c.orchestration!.controllerRuntime, model = c.models!.daily!;
+  mkdirSync(runtime.workRoot, { recursive: true }); mkdirSync(c.codex.home, { recursive: true });
+  const configFile = path.join(runtime.home, 'config.toml');
+  const proof = { capabilityReady: true, model, binarySha256: hash(readFileSync(runtime.command)),
+    configurationDigest: hash(JSON.stringify({ home: realpathSync(runtime.home), model: [model.model, model.reasoning, model.contextWindowTokens],
+      policy: controllerPolicy, nativeConfigHash: existsSync(configFile) ? hash(readFileSync(configFile)) : 'absent' })),
+    checks: Object.fromEntries(['firstTurnCompleted', 'resumeSameIdentity', 'dynamicTool', 'modelProfileObserved', 'effectiveToolSurfaceVerified',
+      'nativeAutoCompactionDisabledVerified', 'mediaVerified', 'cancellationVerified', 'writerOwnershipVerified'].map(key => [key, true])) };
+  writeFileSync(path.join(c.codex.home, 'models_cache.json'), JSON.stringify({models:[{slug:'gpt-6-sol',effective_context_window_percent:95,max_context_window:872000}]}));
+  writeFileSync(path.join(runtime.workRoot, 'runtime-lock.json'), JSON.stringify(proof), { mode: 0o600 });
+  mkdirSync(path.join(c.codex.home, 'thread-writer-locks'), { recursive: true });
+  writeFileSync(path.join(c.codex.home, 'thread-writer-locks', '.coordination.lock'), '');
 }

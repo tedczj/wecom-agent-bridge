@@ -1,4 +1,3 @@
-import { Router } from '../src/routing/router.ts';
 import { execFileSync } from 'node:child_process';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -34,11 +33,7 @@ async function main(): Promise<void> {
       const foreign = store.db.prepare(`SELECT 1 FROM jobs j JOIN sessions s USING(session_key)
         WHERE s.backend != ? AND json_extract(j.input_json,'$.routing') IS NULL AND j.status IN ('preparing','queued','running','cancel_requested') LIMIT 1`).get(c.backend);
       invariant(!foreign, 'BACKEND_SWITCH_BUSY');
-      const routed=store.db.prepare("SELECT input_json FROM jobs WHERE json_extract(input_json,'$.routing') IS NOT NULL AND kind='agent' AND status IN ('preparing','queued','running','cancel_requested')").all() as {input_json:string}[];
-      if(routed.length) {
-        invariant(c.routing,'ROUTING_CONFIG_REQUIRED');const router=new Router(c,store);
-        for(const row of routed) { const input=JSON.parse(row.input_json),r=input.routing; invariant(router.executionTarget(input.route,r.directory,r.execution).digest===r.digest,'PROFILE_CHANGED'); }
-      }
+      // Hierarchical startup revalidates queued directory, profile, selection and effect snapshots.
     } finally { store.close(); }
   };
   safeToSwitch();

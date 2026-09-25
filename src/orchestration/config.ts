@@ -37,8 +37,8 @@ export function parseModels(value: unknown): Record<string, ModelProfile> {
   for (const [name, entry] of Object.entries(models)) {
     invariant(/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(name), 'CONFIG_MODEL_NAME');
     const model = strict(entry, ['model', 'reasoning', 'contextWindowTokens']);
-    invariant(['minimal', 'low', 'medium', 'high', 'xhigh'].includes(String(model.reasoning)), 'CONFIG_REASONING');
-    result[name] = { model: text(model.model), reasoning: model.reasoning as ModelProfile['reasoning'],
+    invariant(['minimal', 'low', 'medium', 'high', 'xhigh'].includes(String(model.reasoning ?? 'high')), 'CONFIG_REASONING');
+    result[name] = { model: text(model.model ?? 'gpt-6-sol'), reasoning: (model.reasoning ?? 'high') as ModelProfile['reasoning'],
       contextWindowTokens: number(model.contextWindowTokens, 1, Number.MAX_SAFE_INTEGER) };
   }
   invariant(Object.hasOwn(result, 'daily'), 'CONFIG_DAILY_REQUIRED');
@@ -58,14 +58,14 @@ export function parseOrchestration(value: unknown, models: Record<string, ModelP
     mode: fixed(o.mode, 'hierarchical'),
     controllerRuntime: { kind: fixed(runtime.kind, 'codex-app-server'), transport: fixed(runtime.transport, 'stdio'), command: absolute(runtime.command),
       home: absolute(runtime.home), workRoot: absolute(runtime.workRoot), requireCapabilityProbe: fixed(runtime.requireCapabilityProbe, true), nativeAutoCompaction: fixed(runtime.nativeAutoCompaction, 'disabled') },
-    bridge: { modelProfile: profile(bridge.modelProfile) },
+    bridge: { modelProfile: profile(bridge.modelProfile ?? 'daily') },
     route: { inheritModelFrom: fixed(route.inheritModelFrom, 'bridge'), initialization: fixed(route.initialization, 'lazy') },
-    business: { defaultModelProfile: profile(business.defaultModelProfile) },
+    business: { defaultModelProfile: profile(business.defaultModelProfile ?? 'daily') },
     rotation: { thresholdNumerator: fixed(rotation.thresholdNumerator, 4), thresholdDenominator: fixed(rotation.thresholdDenominator, 5),
       usageSource: fixed(rotation.usageSource, 'runtime-only'), mode: fixed(rotation.mode, 'new-session-with-handoff') },
     query: { mode: fixed(query.mode, 'verbatim'), injectHistoricalContext: fixed(query.injectHistoricalContext, false) },
     answers: { root: absolute(answers.root), maxOriginalBytes: number(answers.maxOriginalBytes, 1, 16777216), shortAnswerMaxChars: number(answers.shortAnswerMaxChars, 1, 1200),
-      recapMaxChars: number(answers.recapMaxChars, 1, 1000), recapModelProfile: profile(answers.recapModelProfile), bridgeCanReadOriginal: fixed(answers.bridgeCanReadOriginal, false) },
+      recapMaxChars: number(answers.recapMaxChars, 1, 1000), recapModelProfile: profile(answers.recapModelProfile ?? bridge.modelProfile ?? 'daily'), bridgeCanReadOriginal: fixed(answers.bridgeCanReadOriginal, false) },
     history: { defaultInteractionLimit: number(history.defaultInteractionLimit, 1, 30), defaultSessionLimit: number(history.defaultSessionLimit, 1, 100), maxOriginalPageBytes: number(history.maxOriginalPageBytes, 1, 16384) },
     limits: { maxControllerDecisionsPerRequest: number(limits.maxControllerDecisionsPerRequest, 1, 100), controllerDecisionTimeoutMs: number(limits.controllerDecisionTimeoutMs, 1, 300000),
       passiveChildWaitUsesBusinessDeadline: fixed(limits.passiveChildWaitUsesBusinessDeadline, true), businessWorkers: fixed(limits.businessWorkers, 1) },

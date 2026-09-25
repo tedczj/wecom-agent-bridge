@@ -12,7 +12,6 @@ import type { Store } from './store.ts';
 import { WeixinApi, field, type WeixinAuth } from './weixin-api.ts';
 import { loadOrLogin } from './weixin-login.ts';
 import { downloadImage } from './weixin-media.ts';
-import { HierarchicalBridge } from './orchestration/engine.ts';
 
 export function normalizeWeixin(value: unknown, auth: WeixinAuth, c: Config): {incoming: Incoming; images: Record<string,unknown>[]; context: string; unsupported?: string} {
   const msg = record(value);
@@ -79,12 +78,11 @@ export class WeixinReceiver {
     setMeta(store,'weixin:context',context);
     const stage = path.join(this.c.stateRoot,'weixin-incoming',createHash('sha256').update(incoming.messageId).digest('hex'));
     incoming.media = images.map((_,i) => ({path:path.join(stage,`image-${i}`),source:'message'}));
-    const previous = this.c.orchestration ? store.db.prepare('SELECT request_id task_id FROM orchestration_requests WHERE channel_id=? AND message_id=?').get(incoming.route.channelId,incoming.messageId)
-      : store.db.prepare('SELECT task_id FROM jobs WHERE channel_id=? AND message_id=?').get(incoming.route.channelId,incoming.messageId);
+    const previous = store.db.prepare('SELECT request_id task_id FROM orchestration_requests WHERE channel_id=? AND message_id=?').get(incoming.route.channelId,incoming.messageId);
     if (previous) {
       // Validate duplicate input without redownloading or re-executing it.
       const result = await this.service.bridge.accept(incoming);
-      if (this.service.bridge instanceof HierarchicalBridge && result.taskId) { await this.service.bridge.mediaReady(result.taskId); rmSync(stage, { recursive: true, force: true }); }
+      if (result.taskId) { await this.service.bridge.mediaReady(result.taskId); rmSync(stage, { recursive: true, force: true }); }
       return;
     }
     const fail = (code: string) => {
@@ -92,13 +90,12 @@ export class WeixinReceiver {
         : code === 'WEIXIN_MEDIA_UNSUPPORTED' ? '当前支持文字、图片和带转写文本的语音；暂不支持文件或视频。'
         : code === 'WEIXIN_QUOTE_UNSUPPORTED' ? '当前暂不处理引用消息，请把需要分析的内容直接发送。'
         : `消息未执行（${code}），请检查本地 bridge。`;
-      if (this.service.bridge instanceof HierarchicalBridge) this.service.bridge.reject(incoming, code, text);
-      else { const {job,duplicate} = store.reserve(incoming,'command'); if (!duplicate) store.complete(job.task_id,'failed',text,code); }
+      this.service.bridge.reject(incoming, code, text);
     };
     if (unsupported) { fail(unsupported); return; }
     try {
       if (images.length) {
-        if (this.c.orchestration) rmSync(stage, { recursive: true, force: true });
+        rmSync(stage, { recursive: true, force: true });
         privateDirectory(stage); let total = 0;
         for (const [i,image] of images.entries()) {
           const bytes = await downloadImage(image,this.c.media.maxImageBytes,signal);
@@ -110,8 +107,7 @@ export class WeixinReceiver {
       if (result.rejected) { fail(result.rejected); return; }
       // MediaStore copies and fully validates input before staged files disappear.
       if (result.taskId) {
-        if (this.service.bridge instanceof HierarchicalBridge) await this.service.bridge.mediaReady(result.taskId);
-        else while (store.get(result.taskId).status === 'preparing') await sleep(10,undefined,{signal});
+        await this.service.bridge.mediaReady(result.taskId);
       }
       log('weixin.accepted',{taskId:result.taskId});
     } catch(e) {
@@ -142,7 +138,7 @@ export async function runWeixin(c: Config, output: Writable, signal: AbortSignal
       const identity = JSON.stringify([channel.auth.botId,channel.auth.userId]);
       invariant(!getMeta(store,'weixin:identity') || getMeta(store,'weixin:identity') === identity,'WEIXIN_ACCOUNT_MISMATCH');
       setMeta(store,'weixin:identity',identity);
-      const stage = path.join(c.stateRoot,'weixin-incoming'); privateDirectory(stage); if (!c.orchestration) rmSync(stage,{recursive:true,force:true});
+      privateDirectory(path.join(c.stateRoot,'weixin-incoming'));
       channel.ready = true;
     }});
   const stop = () => { void service.bridge.stop().catch(() => log('weixin.stop_failed')); };

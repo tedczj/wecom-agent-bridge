@@ -2,15 +2,15 @@
 
 本文件记录三层实现的阶段提交及实际证据；完整发布验收尚未完成。冻结设计包保持原始字节和校验和。
 
-## 本次执行约定
+## 当前切换（2026-09-25）
 
-- 施工分支 `dev`。本次删除过度扩展的解析审计工具，运行离线检查后 commit/push 并重启本地 bridge；不运行 live LLM。
-- 此前 live 目标按用户要求为 `gpt-6-sol / medium`，覆盖设计包示例中的 `high`；不自动换模型。
-- 用户于 2026-09-23 明确暂缓真实 1M/80% 长测，先埋点，运行一段时间后评估。因此 LIVE-26/27 是 **DEFERRED_BY_OPERATOR**，不是 PASS；窗口配置不会为方便测试而缩小。
-- 微信手机参与的 LIVE-W01/W02 留待自动测试完成之后，当前 **NOT_RUN**。
-- 管理 runtime 的 `gpt-6-sol / medium` usage 报告有效窗口 **828400**。普通 live 的私有配置已按此实测值设置；1M 示例与实测不符，未宣称 1M 能力，也未用缩小的测试窗口模拟跨 80%。
+服务统一使用三层入口，旧 Bridge/Router/临时意图分类器和旧历史扫描器已删除。默认业务、Bridge 和摘要为 `gpt-6-sol / high`，Route 继承 Bridge；本机旧目录模型覆盖已清除。`routing.interpreter` 拒绝加载。普通目录发现默认限定 `~/workspace`，保留名称/别名优先和跨请求分页。
 
-## 本次清理（2026-09-24）
+本机已停掉旧接收进程并删除本实例旧历史库及运行产物，空库初始化 v4；保留微信配对和传输位置，未动原生业务会话。能力探测已在 high 下重新执行，有效容量 828400；真实合成项目的进展查询/续查已验证原文透传、Route 复用及零额外业务执行。最终离线检查和重启证据统一见 [verification.md](verification.md)。
+
+真实 1M/80% 仍为 **DEFERRED_BY_OPERATOR**；手机 LIVE-W01/W02 为 **NOT_RUN**。本次局部 high 证据不改写下方历史矩阵，也不代表完整故障或远端写入验收通过。冻结设计包（含当时配置样例）保留原字节；当前部署样例使用仓库根目录的 `config*.example.json`。
+
+## 历史清理（2026-09-24）
 
 已删除 JS／Shell／Python 解析器、命令/patch 副作用推断、fixture Git/脚本审计、Recap/迁移远端写入补审及专用单测，移除 `mvdan-sh` 依赖和 adapter 引用。保留设计要求的直接测试断言与证据导出；`noProductionRemoteWrites` 缺 oracle 时继续 BLOCKED，不因删除工具改成 PASS。同时删除数据迁移 CLI、备份/导入/绑定映射实现、专用测试及 v2 自动升级。建表定义移入 orchestration/schema.ts，仅初始化空库或打开已有 v4；非空 v3 原样拒绝。LIVE-24 保留编号并返回 DATA_MIGRATION_REMOVED。当前检查见 docs/verification.md。
 
@@ -23,7 +23,7 @@
 - LIVE-07 的历史概括误触发业务已修复：会话选项返回宿主 delegationIntent，Bridge/Route 明确归档答案查询规则。long-history-intent-live 三轮功能断言通过，scoped-effects-reevaluated-result-v6.json 三轮完整 PASS。
 - LIVE-08/11/18 的 v3 补审、LIVE-14 的 corruption-effects-reevaluated-result-v7.json、LIVE-25 的 scoped-effects-reevaluated-result-v8.json、LIVE-28 的 v5 补审各三轮 PASS；各自原报告、原数据和审计代码快照保留在私有 runtime 中。结果仅对应其记录的候选和证据。
 - 此前 LIVE-16/17/24 的完整远端写入审计未完成，未标 PASS；该补审工具现已移除。
-- LIVE-26/27（真实 1M/80%）按用户要求暂缓，日志埋点保留；LIVE-W01/W02 手机验收未运行。生产部署和生产迁移未切换。
+- LIVE-26/27（真实 1M/80%）按用户要求暂缓，日志埋点保留；LIVE-W01/W02 手机验收未运行。当时未切换生产；当前切换状态见上文。
 
 设计保留测试断言和证据要求；完整解析审计工具不是设计要求，已按用户要求删除。
 
@@ -31,7 +31,7 @@
 
 | 阶段 | 已加入工作树 | 尚未完成 |
 |---|---|---|
-| M0 | 独立兼容候选通过真实 6 Sol/medium create/resume、动态回调、实际工具集合诊断、禁用压缩模式、runtime usage、图片、取消和 writer busy→idle；失败探测保留 | 原已安装 binary 仍无成功证明；1M/80% 长测暂缓；完整上游 workspace 回归未通过，生产未切换 |
+| M0 | 独立兼容候选通过真实 6 Sol/medium create/resume、动态回调、实际工具集合诊断、禁用压缩模式、runtime usage、图片、取消和 writer busy→idle；失败探测保留 | 原已安装 binary 仍无成功证明；1M/80% 长测暂缓；完整上游 workspace 回归未通过；当前部署使用匹配 high 的新证明 |
 | M1 | 原文接收、严格配置、原文 hash/去重；空库初始化 v4；非空旧状态拒绝转换 | 数据迁移按用户要求移除，LIVE-24 不再支持 |
 | M2 | final capture、原件和 recap 已接 worker/Delivery；系统控制回复归档并记入交互；业务失败/取消/中断另存 system 通知，不把业务草稿标成功；`/result` 原件片段不经短文捷径泄露给 Bridge；独立无工具 recap；恢复保留完成时间 | 真实 recap 语义验收、完整故障矩阵 |
 | M3 | 管理生命周期接线、进程 ownership marker、原生最后 turn 校验、L0 handoff、generation CAS、80% 日志；接收恢复与结果补提交；Bridge/Route 按 root 共享已配置工具调用预算 | 全链路恢复故障注入；完整三层 live 验收 |
@@ -39,7 +39,7 @@
 | M5 | catalog/reader/verifier 已接选择和查询；Codex 索引精确定位核对 header、header fallback、Pi 分支阅读；已验证完成时间按 file revision 缓存，完整且全部已验证的候选页按完成时间排序；支持本机 0.155.1 的 settings/UI mirror/world_state/usage 记录 | 后台增量索引/跨页完整覆盖排序、Pi readiness 与 live lane、更多真实业务历史格式验收 |
 | M6–M8 | 正在完善；LIVE-01/02/03/04/05/06/07/08/09/10/11/12/13/14/15/16/17/18/19/20/21/22/23/25/28/29/30 adapter 已接入；报告锁定 assertion/predicate/expected，核对证据文件及哈希；清理未确认会阻止后续场景；直接证据检查；旧 58 ID 保留并补离线映射；权威文档区分默认模式和三层施工状态 | 未验证断言的直接证据、完整故障恢复、最终发布检查与发布 |
 
-`openService` 已接 `HierarchicalBridge`，生产 factory 要求匹配模型、binary SHA、native config/policy digest 的完整 `runtime-lock.json`；缺失、不完整或不匹配均拒绝启动，不回退到 legacy 执行。probe 现可为实际具备两项限制能力的独立候选产生 PASS 证明；原已安装 binary 的旧失败证明没有被修改。运行时每轮还必须提供匹配当前角色工具集合的 native 诊断。空新库可初始化 v4；非空旧库拒绝转换，需另用空 stateRoot。现有生产服务和部署配置未切换。
+`openService` 已接 `HierarchicalBridge`，生产 factory 要求匹配模型、binary SHA、native config/policy digest 的完整 `runtime-lock.json`；缺失、不完整或不匹配均拒绝启动，不回退到 legacy 执行。probe 现可为实际具备两项限制能力的独立候选产生 PASS 证明；原已安装 binary 的旧失败证明没有被修改。运行时每轮还必须提供匹配当前角色工具集合的 native 诊断。空新库可初始化 v4；非空旧库拒绝转换，需清空本实例历史状态或另用空 stateRoot。当前入口和配置已统一，历史部署状态不作为当前事实。
 
 项目规则仍关闭并检查来源。仅允许声明登录 home 中固定、非符号链接的个人 `AGENTS.md` / `AGENTS.override.md`；其他项目/自定义来源拒绝。此前把个人全局指令也一律拒绝的检查已修正；允许个人指令不是工具隔离的证据，后者仍须独立通过 M0。
 

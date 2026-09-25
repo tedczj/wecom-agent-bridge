@@ -6,6 +6,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { parseConfig,preparePaths } from '../src/config.ts';
+import { configureOfflineHierarchy } from '../tests/helpers.ts';
 import { Store } from '../src/store.ts';
 import { invariant,errorCode } from '../src/errors.ts';
 
@@ -21,7 +22,7 @@ async function main():Promise<void> {
   const origin=path.join(root,'origin.git');git(root,'clone','--bare','--quiet',repo,origin);git(repo,'remote','add','origin',origin);
   const next=path.join(root,'next');git(root,'clone','--quiet',origin,next);writeFileSync(path.join(next,'MAINTENANCE_SMOKE.txt'),'synthetic update\n');git(next,'add','MAINTENANCE_SMOKE.txt');git(next,'-c','user.name=Maintenance smoke','-c','user.email=smoke@example.invalid','commit','-qm','synthetic update');git(next,'push','--quiet');
   const expected=git(next,'rev-parse','HEAD'),home=path.join(root,'home');mkdirSync(home);
-  const c=parseConfig({workspace:{id:'smoke',path:repo},stateRoot:path.join(root,'state'),agent:{command:path.join(repo,'tests/fakes/codex.mjs'),env:{HOME:home}}});preparePaths(c);
+  const c=parseConfig({workspace:{id:'smoke',path:repo},stateRoot:path.join(root,'state'),agent:{command:path.join(repo,'tests/fakes/codex.mjs'),env:{HOME:home}}});preparePaths(c);configureOfflineHierarchy(c);
   const config=path.join(root,'config.json');writeFileSync(config,JSON.stringify(c),{mode:0o600});
   const env=Object.fromEntries(['PATH','HTTP_PROXY','HTTPS_PROXY','ALL_PROXY','NO_PROXY','http_proxy','https_proxy','all_proxy','no_proxy'].flatMap(k=>process.env[k]===undefined?[]:[[k,process.env[k]!]]));
   const child=spawn(process.execPath,[path.join(repo,'dist/src/cli.js'),'start','--config',config],{env:{...env,HOME:homedir()},stdio:'pipe'}),exited=once(child,'exit');child.stdout.resume();child.stderr.resume();

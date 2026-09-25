@@ -1,7 +1,7 @@
 import path from 'node:path';
 import type { Config } from '../config.ts';
 import type { Store } from '../store.ts';
-import { Catalog, score, type Directory, type DirectoryGrant } from '../routing/catalog.ts';
+import { Catalog, score, type Directory, type Scan, type DirectoryGrant } from '../routing/catalog.ts';
 import { hash } from '../routing/config.ts';
 import { invariant } from '../errors.ts';
 import { readConversationState } from '../controllers/handoff.ts';
@@ -18,6 +18,13 @@ export class Directories {
     invariant(hash(this.c.routing) === this.baseline.version, 'PROFILE_CHANGED');
     const grants = this.store.value<DirectoryGrant[]>('directory-grants:' + scope) ?? [];
     return new Catalog(this.c, grants, this.baseline);
+  }
+  async search(scope: string, query: string, budget = 200): Promise<{ scan: Scan; partial: boolean }> {
+    const catalog = this.catalog(scope), key = 'directory-search:' + hash([scope, query, catalog.version]);
+    const previous = this.store.value<Scan>(key);
+    const result = await catalog.search(query, previous ?? undefined, budget);
+    this.store.put(key, result.partial ? result.scan : null);
+    return result;
   }
   resolve(scope: string, ref: string): Directory {
     const catalog = this.catalog(scope);
@@ -54,6 +61,7 @@ export class Directories {
   propose(scope: string, sourceRequestId: string, directoryPath: string): Consent {
     const request = new RequestStore(this.store).get(sourceRequestId, scope);
     invariant(request.phase === 'bridge_planning' && !request.job_task_id && !request.source_request_id, 'AUTHORIZATION_REQUEST_STATE');
+    invariant(path.isAbsolute(directoryPath) && request.raw_query.includes(directoryPath), 'DIRECTORY_EXPLICIT_PATH_REQUIRED');
     const catalog = this.catalog(scope), directory = catalog.propose(directoryPath, catalog.authorizationProfile());
     const granted = new Catalog(this.c, [{ directory, version: catalog.version }], catalog);
     const target = granted.target(directory);
@@ -70,6 +78,8 @@ export class Directories {
     return this.store.atomic(() => {
       const consent = this.store.value<Consent>('directory-consent:' + scope), catalog = this.catalog(scope);
       invariant(consent && consent.version === catalog.version && Date.now() < consent.expiresAt, 'AUTHORIZATION_EXPIRED');
+      invariant(this.store.db.prepare("SELECT 1 FROM outbox WHERE task_id=? AND purpose='control' AND state='sent'").get(consent.sourceRequestId) &&
+        !this.store.db.prepare("SELECT 1 FROM outbox WHERE task_id=? AND purpose='control' AND state!='sent'").get(consent.sourceRequestId), 'AUTHORIZATION_NOT_DELIVERED');
       const proposed = catalog.propose(consent.directory.path, consent.directory.profile);
       invariant(proposed.identity === consent.directory.identity, 'DIRECTORY_CHANGED');
       const granted = new Catalog(this.c, [{ directory: proposed, version: catalog.version }], catalog);

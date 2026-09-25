@@ -2,7 +2,7 @@
 
 ## 三层施工覆盖
 
-下方原 58 ID 表保留既有模式的映射和退役说明，不代表三层模式已经逐项 live 验收。三层新增测试均明确标为 OFFLINE；实际运行计数见 [当前验证](verification.md)，剩余设计差距见 [实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。
+下方原 58 ID 表保留验收编号和退役说明，现行服务仅为三层模式，不代表三层模式已经逐项 live 验收。三层新增测试均明确标为 OFFLINE；实际运行计数见 [当前验证](verification.md)，剩余设计差距见 [实现状态](THREE_LAYER_IMPLEMENTATION_STATUS.md)。
 
 | 原 ID 范围 / 新边界 | 三层离线补充 |
 |---|---|
@@ -14,7 +14,7 @@
 | 模型/window 来源 | `unit/orchestration` 逐字段来源；`contract/codex` 固定窗口参数；`contract/pi` prompt 前 window 校验；`e2e/hierarchical` digest 变化不静默续接 |
 | 初始化、维护与 live 报告 | `unit/hierarchy-schema` 检查空库初始化与非空库原样拒绝；`unit/maintenance-result` 和 `e2e/hierarchical` 维护原件、重复收尾、启动恢复与 live 重放仪表的离线检查；`unit/live-report` 保留 33 case / 145 assertion / 5 global，锁定预期并校验证据文件/hash，缺证据不得 PASS；LIVE-24 迁移实现已移除，保留设计编号并返回 `DATA_MIGRATION_REMOVED` |
 
-真实 `gpt-6-sol / medium` 只执行了有限能力探测；M0 阻塞，完整三层 live 未通过。LIVE-26/27 真实大上下文测试按用户要求暂缓；LIVE-W01/W02 需手机参与，尚未执行。
+当前 high 能力探测和隔离进展查询验证见 verification.md；完整三层 live 故障矩阵仍未通过。LIVE-26/27 真实大上下文测试按用户要求暂缓；LIVE-W01/W02 需手机参与，尚未执行。
 
 ## 原 58 ID
 
@@ -59,7 +59,7 @@
 | B05 | 取消与实际子孙进程停止 | contract/codex C12–C14 + contract/pi B05 + CLI05；脱离进程组的守护程序仍属人工/外部隔离边界。 |
 | B06 | 会话映射持久化失败 | contract/codex C11 + contract/pi B06。 |
 | Q01 | 十次并发重复和重启重放 | e2e/bridge Q01、recovery R02、CLI01、微信 W06/W12。 |
-| Q02 | 全局单执行任务 | 每个 stateRoot 单 worker：unit/store Q02、e2e/bridge queue；新增 routing BR-19 验证跨 stateRoot 同真实目录互斥（同宿主同用户）。 |
+| Q02 | 全局单执行任务 | 每个 stateRoot 单 worker：unit/store Q02、e2e/bridge queue；`unit/codex-permissions`、`dispatch` 与目录锁验证跨 stateRoot 同真实目录互斥（同宿主同用户）。 |
 | Q03 | preparing 不被同会话越序 | unit/store Q03 + e2e/bridge Q03。 |
 | Q04 | 队列容量前置拒绝 | e2e/bridge queue capacity case。 |
 | Q05 | 重复 /new | e2e/bridge Q05。 |
@@ -75,7 +75,7 @@
 | D07 | 自动分页上限和结果领取 | unit/core D07、store D07、e2e/bridge /result。 |
 | D08 | 原始错误含秘密 | Codex C08 和结构化日志；微信 W03/W09/W13 验证 API 错误边界，日志不输出原始错误体或凭据。 |
 | R01 | preparing 时强杀 | e2e/recovery R01：真实 SIGKILL，失败及孤儿清理。 |
-| R02 | queued 时强杀 | e2e/recovery R02：完整输入仅执行一次。 |
+| R02 | queued 时强杀 | e2e/recovery R02：SIGKILL 后完整输入持久化；三层冷启动执行已验证的排队请求一次且重投去重；unit/dispatch 验证 FIFO 与提交不确定时禁止重放。 |
 | R03 | running 已有修改时强杀 | e2e/recovery R03：实际文件变化，blocked/tainted，不重跑。 |
 | R04 | 结果事务中强杀 | e2e/recovery R04：原子回滚。 |
 | R05 | 提交结果后强杀 | e2e/recovery R05：只输出，不调用 Agent。 |
@@ -106,65 +106,24 @@
 
 默认测试不连接真实模型或微信账号。图片理解、语音转写质量、实际沙箱以及脱离进程组的守护程序清理需要独立验收。
 
-## 目录路由与历史会话
+## 目录路由与历史会话（现行映射）
 
-原始 58 个 ID 保持原表。新增 22 个行为场景由 `tests/unit/routing.test.ts` 的具名 BR 测试覆盖；该文件还包含生产 openService + Codex/Pi 测试子进程的集成路径，名称中的 production entry 只表示真实入口，backend 仍是离线 double。
+旧 `routing.test.ts` 的临时分类器、规则解析、旧扫描器和固定诊断专属测试已退役；其仍有效的行为改接三层或由既有三层用例覆盖，不把删除用例计算成通过。
 
-| ID | 可执行断言 |
+| 原新增编号/行为 | 当前离线验证位置 |
 |---|---|
-| BR-01 | 首次默认目录，记录实际 worker workspaceId |
-| BR-02 | 换话题/参考其他项目仍用同一 workspace/session |
-| BR-03 | operator 别名定位；session 不串项目 |
-| BR-04 | 授权根扫描、README 用途匹配、确定 profile 继承 |
-| BR-05 | 分页预算与持久化 continuation，超过 200 个目录仍可继续 |
-| BR-06 | 多候选澄清，不执行；答目录名后选择 |
-| BR-07 | 不存在/无 profile 不执行且保持当前绑定 |
-| BR-08 | symlink、撤权、同路径替换设备/inode 均拒绝 |
-| BR-09 | 查询其他目录不改变 activeWorkspace |
-| BR-10 | 23h59m、24h、24h+1ms，未知/未来时间；过期生成新 session |
-| BR-11 | status/history 控制不更新完整回复时间；原 D 系列另测交付 |
-| BR-12 | 新建去重、重新跑仍续接；新建不取消活跃任务 |
-| BR-13 | A-B-A 保留 A 原绑定 |
-| BR-14 | 活跃尚未回复时连续输入保持同一个 session |
-| BR-15 | 格式故障/注入超时/partial 不当空历史执行 |
-| BR-16 | 超过 10 条搜索、超过 100 文件继续、列表快照序号、结果分页 |
-| BR-17 | 显式恢复超过 24h 后下一任务仍续接所选历史 |
-| BR-18 | conversation/profile/cwd 归属验证；跨会话查询/恢复拒绝 |
-| BR-19 | 排队目标固定、重启恢复、事务回滚、profile 漂移拒绝、跨 stateRoot 互斥；真实入口切换 Codex/Pi doubles |
-| BR-20 | tainted/blocked 下新建仍拒绝 |
-| BR-21 | 恶意 README 只能作数据，不扩大根/profile/执行 schema |
-| BR-22 | 简称纠正版本递增，删除路径使别名失效 |
+| BR-01/02/03/06/07/09/12/13/14，目录选择、查询、A-B-A、澄清、FIFO | `e2e/hierarchical`、`unit/directories`、`unit/business-sessions` |
+| BR-04/05/08/21/22，名称优先、分页、范围、物理身份、别名 | `unit/routing`、`unit/directories` |
+| BR-10/11/15/16/17/18/20，时间、历史覆盖、选择和归属 | `unit/business-sessions`、`history-catalog`、`history-reader`、`history-references` |
+| BR-19，固定配置、幂等、恢复、跨目录执行 | `unit/dispatch`、`recover-resources`、`e2e/hierarchical`、`e2e/start` |
+| AUTH01–12，显式外部路径、授权、过期、送达、scope、参数 | `unit/directories`、`unit/routing`、`e2e/hierarchical`；旧自然语言确认同义词分类器退役 |
+| PL01–05/08–10/13–14，原文、模型覆盖、进度查询 | `e2e/hierarchical`、`unit/orchestration`、`unit/routing`；旧组合分类器退役 |
+| PL06/07/11，历史图片/背景注入 | 旧功能退役；三层只传当前请求原文与附件，`e2e/hierarchical`、`unit/orchestration` 验证 |
+| H01–07，按需原生历史读取及验证 | `unit/history-*`、`unit/business-sessions` |
+| I01–05，临时解释器 | 实现退役；`unit/routing` 验证旧配置明确拒绝，`controller-factory` 验证缺少能力证明拒绝 |
+| DBG01–04/W16，scope 与脱敏 | `e2e/hierarchical`、`contract/weixin` 使用现行 `/debug`，不扫描原生历史 |
+| MG01–08/W15，维护与恢复 | `e2e/maintenance`、`unit/maintenance-result`、`contract/weixin` |
 
-还测试 Pi v3 不伪造 settled 时间、解释器 schema/响应上限/禁止重定向/实际配置模型保持。默认离线模型响应仅用于协议验证，不证明真实语义分类准确率、真实原生会话版本兼容或微信新路由送达。
+`smoke:progress -- --live --config FILE --out DIR` 使用真实模型和合成项目验证：建立一条业务记录，按项目名称查询进度，原文传递、同 Route 续查、不额外启动业务、不改业务回复时间。它不发送微信，不替代手机或完整 live 故障验收。
 
-## 历史兼容与 Agent 优先修复
-
-`tests/unit/routing.test.ts` 新增 H01–H07、I01–I05：旧版无 cwd 文件、其他项目坏正文、native SQLite cwd 索引/失效路径、超过 8 MiB 流式 UTF-8、活动/半写入会话的读取与恢复分离、坏文件不完整提示、活动绑定不得被当作丢失新建、model/reasoning 匹配；Codex 分类优先、固定安全参数、工具事件拒绝、模型失败不转 worker、路径越权拒绝、HTTP high 参数、关闭时取消分类器。
-
-`smoke:routing` 必须 --live；只验证路由分类与只读 native history，不发送微信或派发 worker。现场观测与离线 doubles 分开记录于 verification.md。
-
-## 组合请求与对话材料交接
-
-`tests/unit/routing.test.ts` 的 PL01–PL13 覆盖：排障材料交给 worker、缺目标切换不伪报成功；未登记目录及模型简称/推理参数组合；换模型独立会话与非法配置不变更状态；只读查询结果反馈模型且不切目录/执行；查询循环/越权；真实图片字节跨新会话复制、原文和来源保留；跨对话/清空上下文隔离；排队配置固定；空结果查询范围；生产入口 CLI 参数与跨重启续接；缺图和 schema 注入拒绝；启动回执去重且不伪造完成时间；重启预检验证排队任务覆盖参数。
-
-PL14 补充目录查询省略 query / query=null：返回默认或切换后的当前目录，不启动 worker、不改变绑定；显式越权路径继续拒绝。
-
-`tests/contract/pi.test.ts` 补充动态模型/推理 RPC 设置以及后端降档时拒绝 prompt。以上默认测试为离线 doubles。`smoke:planner --live` 验证真实中文请求分类、发现未配置目录、terra/high、新会话原生图片交接和实际 turn metadata；合成红图正确回复只证明该样本，不能代替用户截图理解或手机端验收。
-
-## 目录交互授权
-
-`tests/unit/authorization.test.ts` AUTH01–AUTH09 覆盖：完整路径询问且授权前不读元数据/不启动 worker；原请求与确认身份分离、去重；拒绝/含糊回复消耗待授权状态；过期、配置变化、目录替换/符号链接、未送达/unknown/部分送达阻断；对话隔离、精确目录、重启后的执行预检；私有路径拒绝；带图片确认拒绝；历史查询不切目录/执行；模型改变授权目标时拒绝。测试使用离线模型和后端 doubles。
-
-`smoke:authorization --live` 使用真实规划与只读工作 Agent，在临时目录和独立本地 stateRoot 验证两条消息授权与一次执行，不发送微信、不替真实目录授权。
-
-AUTH10–AUTH11 验证新授权目录选择默认工作区 root 的兜底 profile、询问展示模型/推理、重启后保持、显式覆盖优先、既有项目不变；root 未配置 profile 时不继承当前工作区。I03/PL05 的拒绝样本使用夹具私有目录，不依赖 macOS /etc 符号链接。
-
-## 显式服务管理
-
-AUTH12 覆盖 `/approve` 目录授权别名、原请求身份与禁止任意参数。MG01–MG08（10 个离线场景）覆盖同对话下一条确认、外来确认拒绝、非确认取消、重启前排空、维护期间拒绝新工作、进程替换、结果单独领取、去重、过期/未知送达拒绝、管理进程崩溃不自动重放、真实本地 Git 的快进/分支限制/未跟踪冲突保护、npm double 的检查失败恢复。原 start.sh 强制退出、旧锁和后端切换测试保留并扩展父子进程检查。
-
-W15 使用 iLink 协议 double 验证微信配对身份、确认消息、最新 context、最终回执和重投去重；不声称手机端实测。`smoke:maintenance --live` 在临时副本中使用真实 Git、npm ci、npm run check 和本地管理/桥接进程验证更新流程，不调用 Agent、不发送微信。
-
-## Remote debug (additional coverage; original 58 IDs retained)
-
-DBG01–DBG04 in `tests/unit/routing.test.ts` cover planner bypass, conversation ownership, task prefixes, old-task snapshot absence, state preservation, duplicate commands, historical versus current failures, hashed/bounded file samples, invalidated workspace handling and consuming pending consent without granting it. W16 in `tests/contract/weixin.test.ts` covers paired-user-only debug delivery, outbox deduplication and payload redaction through an iLink protocol double. These are offline/model-free checks, not live Agent, phone, visual or OS-isolation verification.
+原 58 编号仍全部保留。所有默认测试使用离线 doubles，不是 live Agent、视觉或 OS 隔离证明。

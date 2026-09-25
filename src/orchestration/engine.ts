@@ -26,7 +26,7 @@ import { RecapService } from '../answers/recap.ts';
 import { recordFailureNotice } from '../answers/failure-notice.ts';
 import { listInteractions } from '../answers/projection.ts';
 import { readAnswerOutline, readAnswerRange } from '../answers/history-tools.ts';
-import { directoryIdentity, historyRevision } from '../history/catalog.ts';
+import { NativeCatalog, directoryIdentity, historyRevision } from '../history/catalog.ts';
 import { NativeReader } from '../history/reader.ts';
 import { HistoryReferences } from '../history/references.ts';
 import type { PiCompletionProof } from '../history/verifier.ts';
@@ -395,7 +395,8 @@ export class HierarchicalBridge {
         const page = await new NativeReader().readWindow(target, candidate, args.cursor as string | undefined, abort.signal, args.order === 'oldest-first' ? 'oldest-first' : 'newest-first');
         const state = readConversationState(this.store, scope), owner = this.store.nativeOwner(candidate.ref);
         state.queryFocus = { directoryRef: directory.id, sessionRef: args.sessionRef as string, sessionKey: owner?.session_key, requestId: request.request_id };
-        this.store.put('orchestration:conversation:' + scope, state); return page;
+        this.store.put('orchestration:conversation:' + scope, state);
+        return { ...page, nativeId: candidate.ref.kind === 'codex' ? candidate.ref.threadId : candidate.ref.sessionId, role: candidate.role };
       },
       read_answer_outline: args => readAnswerOutline(this.dependencies.artifacts, args.answerRef as string, { role: 'route', scope }),
       read_answer_range: args => readAnswerRange(this.dependencies.artifacts, args.answerRef as string, { role: 'route', scope }, args.start as number, args.limit as number | undefined),
@@ -454,7 +455,10 @@ export class HierarchicalBridge {
       const session = this.store.session(job.session_key);
       const result = await backend.run(input, session.agent_ref_json ? JSON.parse(session.agent_ref_json) as SessionRef : undefined, {
         contextWindowResolved: value => this.store.put('business-context-window:' + job.task_id, value),
-        persistSession: async ref => this.store.persistSession(job.session_key, ref), progress: () => {},
+        persistSession: async ref => this.store.atomic(() => {
+          new NativeCatalog(this.store, scope).registerBusiness(target, ref);
+          this.store.persistSession(job.session_key, ref);
+        }), progress: () => {},
         captureFinal: text => this.dependencies.artifacts.capture(artifact.answer_id, text),
         promptSubmitted: audit => {
           invariant(audit.textSha256 === input.rawQuerySha256, 'QUERY_WIRE_HASH_MISMATCH');

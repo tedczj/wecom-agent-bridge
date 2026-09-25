@@ -8,6 +8,7 @@ import sharp from 'sharp';
 import { fixture, eventually } from '../helpers.ts';
 import { listInteractions } from '../../src/answers/projection.ts';
 import { orchestrationDebug } from '../../src/orchestration/debug.ts';
+import { buildHandoff } from '../../src/controllers/handoff.ts';
 import { RequestStore } from '../../src/orchestration/requests.ts';
 import { normalize } from '../../src/local.ts';
 import type { Maintenance } from '../../src/maintenance.ts';
@@ -15,6 +16,25 @@ import { duplicateMeter } from '../live/duplicate-meter.ts';
 import type { ImageRef } from '../../src/types.ts';
 
 import { harness } from '../hierarchical-helpers.ts';
+test('OFFLINE session identity: business creation and Route replies retain distinct persisted roles and handoff provenance', async t => {
+  const h = await harness(t);
+  const work = await h.bridge.accept(fixture('A work')); await h.settle();
+  const ref = JSON.parse(h.store.session(h.calls[0]!.sessionKey).agent_ref_json!) as { threadId: string };
+  assert.equal(h.store.db.prepare('SELECT role FROM native_session_catalog WHERE native_id=?').get(ref.threadId)?.role, 'business');
+  const history = await h.bridge.accept(fixture('A native history')); await h.settle();
+  const scope = h.store.db.prepare('SELECT conversation_scope FROM orchestration_requests WHERE request_id=?').get(work.taskId!)!.conversation_scope as string;
+  const rows = listInteractions(h.store, scope);
+  assert.equal(rows.find(row => row.requestId === work.taskId)?.producerRole, 'business');
+  assert.equal(rows.find(row => row.requestId === history.taskId)?.producerRole, 'route');
+  const records = buildHandoff(h.store, scope, null).narrative.records;
+  assert.equal(records.find(row => row.requestId === work.taskId)?.producerRole, 'business');
+  assert.equal(records.find(row => row.requestId === history.taskId)?.producerRole, 'route');
+  const registered = h.store.db.prepare('SELECT role FROM native_session_catalog').all().map(row => row.role);
+  assert.ok(registered.includes('bridge')); assert.ok(registered.includes('route'));
+  assert.deepEqual({ nativeId: (h.historyReads[0]!.page as { nativeId: string }).nativeId,
+    role: (h.historyReads[0]!.page as { role: string }).role }, { nativeId: ref.threadId, role: 'business' });
+  assert.equal(h.calls.length, 1);
+});
 test('OFFLINE hierarchical search: directory filtering uses host authorization and never dispatches business work', async t => {
   const h = await harness(t);
   const first = await h.bridge.accept(fixture('A SEARCH_NEEDLE')); await h.settle();

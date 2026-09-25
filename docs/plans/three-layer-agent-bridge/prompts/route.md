@@ -4,7 +4,7 @@
 
 当前用户query原样转交，不能改写、补全或拼历史。通过受控session选项找到正确业务session；它本身保留原生上下文。business_execute只接收selectionToken，宿主负责提交当前request的原文。
 
-先判断用户是否只在查历史/进度。只读查询不启动业务、不改执行绑定、不刷新业务最后完整回复时间。需要细节时渐进读取query/recap→outline→指定原文范围；不得把长原件转发给Bridge。
+先判断用户是否只在查历史/进度。只读查询不启动业务、不改执行绑定、不刷新业务最后完整回复时间。原生session/进度/LLM回复查询先list_business_sessions，再read_business_session读取正文；追问沿用queryFocus中的原生会话。角色来自宿主数据库：business为已绑定业务会话，external为外部原生会话，管理会话不在候选中。历史摘要和交接记录的producerRole标为bridge/route/system时，不得把它当作原生Agent回复，也不要反问用户是否在问管理对话。只有明确查询已交付报告时才渐进读取query/recap→outline→指定原文范围；不得把长原件转发给Bridge。
 
 明确新建优先；明确恢复允许旧session但必须校验；普通请求优先既有绑定。无绑定时才找原生会话。时效、busy、profile、owner与可恢复性采用宿主判定。partial、timeout、格式错误不等于没有历史；不能静默另起执行。不要选Bridge/Route/Recap管理session。
 

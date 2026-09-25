@@ -15,9 +15,9 @@ function tool(name: string, description: string, properties: Record<string, Fiel
     inputSchema: { type: 'object', properties, required, additionalProperties: false } };
 }
 const shared = [
-  tool('search_interactions', 'Search an exact text phrase in original queries and visible short records only, never original answers. Conversation scope is bound by the host. Optional directoryRef must name an authorized directory. Results are newest first; use the last ingressSeq as beforeSeq for older matches.',
+  tool('search_interactions', 'Search an exact text phrase in original queries and visible short records only, never original answers. producerRole identifies who wrote each reply; bridge/route/system replies are management output, not native Agent messages. Conversation scope is bound by the host. Optional directoryRef must name an authorized directory. Results are newest first; use the last ingressSeq as beforeSeq for older matches.',
     { query: string(256), directoryRef: string(), limit: integer(1, 30), beforeSeq: integer(1, Number.MAX_SAFE_INTEGER) }, ['query']),
-  tool('list_interactions', 'Read completed user interactions: one row is one original query/answer pair, never an internal Agent/tool event. limit is 1..30 and defaults to 30; request 30 for the latest 30 rounds, not 60 or 70. For older rows, pass the last returned ingressSeq as beforeSeq. Scope is bound by the host.',
+  tool('list_interactions', 'Read completed user interactions: one row is one original query/answer pair, never an internal Agent/tool event. producerRole identifies who wrote each reply; bridge/route/system replies are management output, not native Agent messages. limit is 1..30 and defaults to 30; request 30 for the latest 30 rounds, not 60 or 70. For older rows, pass the last returned ingressSeq as beforeSeq. Scope is bound by the host.',
     { scope: choice('directory', 'conversation'), limit: integer(1, 30), beforeSeq: integer(1, Number.MAX_SAFE_INTEGER) }, ['scope']),
 ];
 const bridge = [
@@ -36,7 +36,7 @@ const route = [
     { intent: choice('automatic', 'new'), modelProfile: string(64), persistence: choice('request', 'session'), sessionRef: string() }, []),
   tool('select_business_session', 'Select the host default option only. Non-default entries need a new explicit user choice resolved with intent=new or sessionRef; unknown discovery must be clarified. Selection alone does not execute work.', { optionToken: string() }),
   tool('business_execute', 'Submit this request once, using the original text from the request store. Never supply text or history.', { selectionToken: string() }),
-  tool('list_business_sessions', 'Read this authorized directory’s bounded native session metadata.', { limit: integer(1, 10), cursor: string() }, []),
+  tool('list_business_sessions', 'Read this authorized directory’s bounded native session metadata and persisted roles. business is a Bridge-bound native Agent session; external is a discovered unbound native session. Management sessions are excluded. Use read_business_session for actual messages.', { limit: integer(1, 10), cursor: string() }, []),
   tool('read_business_session', 'Read native session messages, newest-first by default. Use order=oldest-first to read forward from the beginning. Continue nextCursor with the same order; copy it exactly. Reading is not permission to resume.', { sessionRef: string(), cursor: string(), order: choice('oldest-first', 'newest-first') }, ['sessionRef']),
   tool('read_answer_outline', 'Read headings of an authorized original answer; never forward the original to Bridge.', { answerRef: string() }),
   tool('read_answer_range', 'Read up to 16 KiB of an authorized original answer. Offsets are UTF-8 bytes.', { answerRef: string(), start: integer(0, Number.MAX_SAFE_INTEGER), limit: integer(4, 16384) }, ['answerRef', 'start']),

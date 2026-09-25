@@ -35,6 +35,10 @@ test('OFFLINE M5: exact native lookup ignores unrelated corrupt/large bodies and
   const page = await catalog.listMetadata(target);
   assert.equal(page.entries.length, 2); assert.equal(page.discoveryCoverage, 'complete');
   assert.equal(page.orderBasis, 'updated-at'); // Does not claim last-completed-response sorting.
+  assert.equal(store.db.prepare('SELECT role FROM native_session_catalog WHERE native_id=?').get(good)?.role, 'external');
+  assert.equal(store.db.prepare('SELECT verification_state FROM native_session_catalog WHERE native_id=?').get(good)?.verification_state, 'metadata-only');
+  assert.throws(() => catalog.registerBusiness(target, { kind: 'codex', threadId: management }), /HISTORY_SCOPE/);
+  assert.equal(store.db.prepare('SELECT role FROM native_session_catalog WHERE native_id=?').get(management)?.role, 'route');
   await assert.rejects(catalog.locateExact(target, { kind: 'codex', threadId: management }), /HISTORY_SESSION_UNAVAILABLE/);
   const alias = path.join(f.root, 'workspace-alias'); symlinkSync(f.workspace, alias);
   db.prepare('UPDATE threads SET cwd=? WHERE id=?').run(alias, good);
@@ -45,7 +49,18 @@ test('OFFLINE M5: exact native lookup ignores unrelated corrupt/large bodies and
   store.persistSession(job.session_key, { kind: 'codex', threadId: owned });
   store.db.prepare('UPDATE orchestration_requests SET job_task_id=? WHERE request_id=?').run(job.task_id, request.request_id);
   assert.equal((await catalog.listMetadata(target)).entries.some(e => e.ref.kind === 'codex' && e.ref.threadId === owned), false);
-  assert.equal((await new NativeCatalog(store, request.conversation_scope).listMetadata(target)).entries.some(e => e.ref.kind === 'codex' && e.ref.threadId === owned), true);
+  assert.equal((await new NativeCatalog(store, request.conversation_scope).listMetadata(target)).entries.find(e => e.ref.kind === 'codex' && e.ref.threadId === owned)?.role, 'business');
+  assert.equal(store.db.prepare('SELECT role FROM native_session_catalog WHERE native_id=?').get(owned)?.role, 'business');
+});
+test('OFFLINE session identity: new business registration precedes transcript creation and cannot change directory ownership', t => {
+  const f = setup(t), store = f.store(); initializeHierarchy(store);
+  const target: Target = { config: f.c, digest: 'profile', directory: { id: 'test', path: f.workspace, identity: 'inode', profile: 'read', aliases: [], description: '' } };
+  const ref = { kind: 'codex' as const, threadId: randomUUID() }, catalog = new NativeCatalog(store, 'scope');
+  catalog.registerBusiness(target, ref); catalog.registerBusiness(target, ref);
+  const rows = store.db.prepare('SELECT role,native_ref_json,verification_state,last_completed_at FROM native_session_catalog WHERE native_id=?').all(ref.threadId);
+  assert.equal(rows.length, 1); assert.equal(rows[0]!.role, 'business'); assert.deepEqual(JSON.parse(rows[0]!.native_ref_json as string), ref);
+  assert.equal(rows[0]!.verification_state, 'metadata-only'); assert.equal(rows[0]!.last_completed_at, null);
+  assert.throws(() => catalog.registerBusiness({ ...target, directory: { ...target.directory, identity: 'different-inode' } }, ref), /HISTORY_SCOPE/);
 });
 test('OFFLINE M5: missing index uses header-only fallback; broken candidates never masquerade as empty complete history', async t => {
   const f = setup(t), store = f.store(); initializeHierarchy(store);

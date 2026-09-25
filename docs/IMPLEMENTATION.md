@@ -8,6 +8,8 @@ Removed: `bridge.ts`, `debug.ts`, `routing/router.ts`, `routing/intent.ts`, `rou
 
 Defaults are `gpt-6-sol / high` for business and Bridge; Route inherits Bridge and recap profile defaults to Bridge. The effective window is required explicitly. Per-request and explicit business-session model overrides preserve management models. Runtime evidence is tied to the actual selected model and effort.
 
+Session identity is persisted in `native_session_catalog`, keyed by backend home, backend and native ID. Bridge/Route/Recap creation records their management role. Business session persistence atomically records `business` before the first prompt; native discovery records unbound sessions as `external`, preserving `unknown` when present. These role records are metadata, not proof of completion or resumability. Management roles cannot be promoted to business and remain excluded from native listing and exact lookup. Interaction projections and controller handoff retain `producerRole` and business binding references; native message reads return the native ID and persisted role. A Route-written history recap remains Route output, even when it describes a business session.
+
 ## Shared execution and delivery
 
 Both transports use the same Bridge, SQLite Store, MediaStore and durable outbox. Local frames are normalized against the configured actor; Weixin frames are checked against the QR-paired bot/user before they can reach the Bridge. Transport and account identity are pinned before worker startup. v1 state is rejected, and existing tasks are not translated across transports.

@@ -1,6 +1,6 @@
 import type { Store } from '../store.ts';
 import { invariant, record } from '../errors.ts';
-import { listInteractions } from '../answers/projection.ts';
+import { listInteractions, type InteractionProjection } from '../answers/projection.ts';
 import { sha256 } from '../orchestration/requests.ts';
 
 export interface ConversationState {
@@ -15,7 +15,8 @@ export interface ControllerHandoff {
     bindings: Array<{ directoryIdentity: string; sessionKey: string; profileDigest: string; version: number }>;
     pendingRequests: Array<{ requestId: string; phase: string; jobTaskId: string | null }>;
     blocked: boolean };
-  narrative: { sourceRequestIds: string[]; records: Array<{ requestId: string; queryExcerpt: string; querySha256: string; shortText: string; status: string }> };
+  narrative: { sourceRequestIds: string[]; records: Array<{ requestId: string; queryExcerpt: string; querySha256: string; shortText: string; status: string;
+    producerRole: InteractionProjection['producerRole']; businessSessionKey: string | null }> };
   sha256: string;
 }
 
@@ -56,7 +57,8 @@ export function buildHandoff(store: Store, scope: string, directoryIdentity: str
       pendingRequests: pending.map(row => ({ requestId: row.request_id as string, phase: row.phase as string, jobTaskId: row.job_task_id as string | null })),
       blocked: store.blocked() },
     narrative: { sourceRequestIds: interactions.map(row => row.requestId), records: interactions.map(row => ({ requestId: row.requestId,
-      queryExcerpt: Array.from(row.query).slice(0, 2000).join(''), querySha256: sha256(row.query), shortText: row.shortText, status: row.status })) },
+      queryExcerpt: Array.from(row.query).slice(0, 2000).join(''), querySha256: sha256(row.query), shortText: row.shortText, status: row.status,
+      producerRole: row.producerRole, businessSessionKey: row.businessSessionKey })) },
   };
   const serialized = JSON.stringify(value);
   invariant(Buffer.byteLength(serialized) <= 65536, 'HANDOFF_OVERSIZED');

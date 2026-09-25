@@ -8,7 +8,7 @@ Both personal Weixin ClawBot and local CLI/JSONL use `HierarchicalBridge` exclus
 
 Project names and aliases take priority over recursive discovery. Discovery is confined to `~/workspace`, intersected with authorized roots. Directory search pages are scoped to conversation, query and configuration and resume across requests. An external directory proposal must appear as an absolute path in the original request. A grant requires explicit same-conversation consent after complete delivery of the question, with expiry, physical identity and profile revalidation.
 
-Progress queries such as “看下 term4u 项目里在干啥” reach that directory's Route verbatim. Route reads recent records progressively and reports coverage limits; it need not scan all native history before answering. Query focus and active execution workspace remain distinct. No business job or successful-response clock update is caused by reading history.
+Progress queries such as “看下 term4u 项目里在干啥” reach that directory's Route verbatim. Route reads native business session messages progressively and reports coverage limits; it need not scan all native history before answering. Session follow-ups refer to that native session unless the user explicitly asks about Weixin management chat. Session roles are persisted in the Bridge catalog; interaction summaries and handoff records preserve the reply's producer role. A Route recap cannot serve as a native Agent reply. Query focus and active execution workspace remain distinct. No business job or successful-response clock update is caused by reading history.
 
 ## Models and sessions
 

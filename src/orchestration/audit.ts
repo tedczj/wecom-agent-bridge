@@ -36,7 +36,7 @@ export function auditTools(store: Store, requestId: string, actor: ControllerSes
       if (actor.role === 'bridge' && ['list_interactions', 'search_interactions'].includes(name)) {
         invariant(Array.isArray(result) && result.length <= 30 && result.every(value => {
           const row = record(value);
-          return Object.keys(row).every(key => ['requestId', 'ingressSeq', 'query', 'kind', 'status', 'answerRef', 'shortText', 'recapState', 'directoryIdentity', 'businessSessionKey'].includes(key)) &&
+          return Object.keys(row).every(key => ['requestId', 'ingressSeq', 'query', 'kind', 'status', 'answerRef', 'shortText', 'recapState', 'directoryIdentity', 'businessSessionKey', 'producerRole'].includes(key)) &&
             typeof row.shortText === 'string' && Array.from(row.shortText).length <= maxShortChars;
         }), 'BRIDGE_HISTORY_PROJECTION');
         audit.bridgeProjectionChecked = true;

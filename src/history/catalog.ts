@@ -29,6 +29,18 @@ export function historyRevision(file: string): string {
 /** Metadata only: locating one bound native ID never opens unrelated session bodies. */
 export class NativeCatalog {
   constructor(private store: Store, private conversationScope: string) {}
+  /** Called with the business session persistence transaction, before its first prompt. */
+  registerBusiness(target: Target, ref: SessionRef): void {
+    invariant(target.config.backend === ref.kind, 'HISTORY_BACKEND');
+    const home = backendHomeKey(target), id = ref.kind === 'codex' ? ref.threadId : ref.sessionId;
+    const existing = this.store.db.prepare('SELECT role,directory_identity FROM native_session_catalog WHERE backend_home_key=? AND backend=? AND native_id=?')
+      .get(home, ref.kind, id) as { role: string; directory_identity: string | null } | undefined;
+    invariant(!existing || !['bridge', 'route', 'recap'].includes(existing.role) && (!existing.directory_identity || existing.directory_identity === directoryIdentity(target)), 'HISTORY_SCOPE');
+    this.store.db.prepare(`INSERT INTO native_session_catalog(native_ref_key,backend_home_key,backend,native_id,directory_identity,native_ref_json,role,verification_state,observed_at)
+      VALUES (?,?,?,?,?,?,'business','metadata-only',?) ON CONFLICT(backend_home_key,backend,native_id) DO UPDATE SET
+      role='business',directory_identity=excluded.directory_identity,native_ref_json=excluded.native_ref_json,observed_at=excluded.observed_at`)
+      .run(sha256(JSON.stringify([home, id])), home, ref.kind, id, directoryIdentity(target), JSON.stringify(ref), Date.now());
+  }
   /** Reuse only completed verification for this exact file revision; never derive completion from file timestamps. */
   recordVerified(target: Target, candidate: CandidateMetadata, check: ResumeCheck): void {
     invariant(target.digest === check.profileDigest && JSON.stringify(candidate.ref) === JSON.stringify(check.ref) &&
@@ -81,12 +93,17 @@ export class NativeCatalog {
       if (scopes.length !== 1 || scopes[0]!.conversation_scope !== this.conversationScope) return;
     }
     if (registered?.directory_identity) invariant(registered.directory_identity === directoryIdentity(target), 'HISTORY_SCOPE');
+    const role = owner || registered?.role === 'business' ? 'business' : registered?.role === 'unknown' ? 'unknown' : 'external';
+    this.store.db.prepare(`INSERT INTO native_session_catalog(native_ref_key,backend_home_key,backend,native_id,directory_identity,native_ref_json,role,verification_state,observed_at)
+      VALUES (?,?,?,?,?,?,?,'metadata-only',?) ON CONFLICT(backend_home_key,backend,native_id) DO UPDATE SET
+      role=excluded.role,observed_at=excluded.observed_at`)
+      .run(sha256(JSON.stringify([homeKey, row.id])), homeKey, target.config.backend, row.id, directoryIdentity(target), JSON.stringify(ref), role, Date.now());
     const timestamp = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && Number.isSafeInteger(value * 1000) ? value * 1000 : null;
     return { ref, file,
       title: typeof row.title === 'string' ? Array.from(row.title).slice(0, 120).join('') : '',
       createdAt: timestamp(row.created_at), updatedAt: timestamp(row.updated_at), sourceRevision: revision,
       lastCompletedAt: registered?.verification_state === 'verified' && registered.source_revision === revision && typeof registered.last_completed_at === 'number' ? registered.last_completed_at : null,
-      role: registered?.role === 'business' ? 'business' : registered?.role === 'unknown' ? 'unknown' : 'external' };
+      role };
   }
   async listMetadata(target: Target, cursor?: string, limit = 10): Promise<CandidatePage> {
     invariant(Number.isSafeInteger(limit) && limit >= 1 && limit <= 100, 'HISTORY_LIMIT');

@@ -54,6 +54,21 @@ test('OFFLINE M5: discarded huge strings still validate bad escapes at their end
   const f = setup(t), h = history(f, '{"payload":{"output":"' + 'x'.repeat(9 * 1024 * 1024) + '\\q","type":"function_call_output"},"type":"response_item"}\n');
   await assert.rejects(new NativeReader().readWindow(h.target, h.candidate), /HISTORY_FORMAT/);
 });
+for (const anomaly of ['overlapping-start', 'empty-completion', 'mismatched-completion']) test(`OFFLINE history: ${anomaly} permits reading but never authorizes resume`, async t => {
+  const f = setup(t), h = history(f), reader = new NativeReader();
+  const start = line({ type: 'event_msg', payload: { type: 'task_started', turn_id: 'next' } });
+  const commentary = line({ type: 'response_item', payload: { type: 'message', role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text: 'visible progress' }] } });
+  const anomalyRows = anomaly === 'overlapping-start' ? start + start : start + line({ type: 'event_msg', payload: {
+    type: 'task_complete', turn_id: anomaly === 'mismatched-completion' ? 'other' : 'next', last_agent_message: anomaly === 'mismatched-completion' ? 'visible reply' : null,
+  } });
+  appendFileSync(h.file, anomalyRows + commentary); h.candidate.sourceRevision = historyRevision(h.file);
+  const page = await reader.readWindow(h.target, h.candidate);
+  assert.equal(page.messages.at(-1)!.text, 'visible progress');
+  assert.equal(page.messages.at(-1)!.purpose, 'assistant-commentary');
+  assert.ok(page.omittedKinds.includes('unverified-turn-order'));
+  assert.equal(JSON.stringify(page).includes('hidden reasoning secret'), false);
+  await assert.rejects(new ResumeVerifier(reader, { check: async () => 'idle' }).verify(h.target, h.candidate, 'profile'), /HISTORY_TURN_ORDER/);
+});
 test('OFFLINE M5: partial records, unknown critical events and writer uncertainty deny execution', async t => {
   const f = setup(t), h = history(f), reader = new NativeReader();
   const uncertain = new ResumeVerifier(reader, { check: async () => 'unknown' });
@@ -77,6 +92,20 @@ test('OFFLINE M5: cursor and pre-dispatch revision/profile checks reject changed
   await assert.rejects(verifier.revalidate(h.target, h.candidate, check), /HISTORY_CHANGED/);
   h.candidate.sourceRevision = historyRevision(h.file);
   await assert.rejects(reader.readWindow(h.target, h.candidate, page.nextCursor), /HISTORY_CURSOR/);
+});
+test('OFFLINE native pages: reverse traversal preserves all messages and binds cursor direction', async t => {
+  const f = setup(t), texts = Array.from({ length: 25 }, (_, i) => '正文-' + i + '文'.repeat(i % 3 === 0 ? 2500 : 0));
+  const h = history(f, texts.map(text => line({ type: 'response_item', payload: { type: 'message', role: 'assistant', phase: 'commentary', content: [{ type: 'output_text', text }] } })).join(''));
+  const reader = new NativeReader(), messages: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await reader.readWindow(h.target, h.candidate, cursor, undefined, 'newest-first');
+    assert.ok(page.messages.length <= 10);
+    assert.ok(page.messages.reduce((bytes, message) => bytes + Buffer.byteLength(message.text), 0) <= 16384);
+    messages.push(...page.messages.map(message => message.text)); cursor = page.nextCursor;
+    if (cursor) await assert.rejects(reader.readWindow(h.target, h.candidate, cursor), /HISTORY_CURSOR/);
+  } while (cursor);
+  assert.deepEqual(messages, [...texts, 'No-progress check: automation-looking text', 'visible final'].reverse());
 });
 test('OFFLINE M5: Pi header/branch reading does not convert assistant timestamps into agent_settled evidence', async t => {
   const f = setup(t, 'pi'), store = f.store(); initializeHierarchy(store);

@@ -30,6 +30,7 @@ export async function harness(t: TestContext, directoryModel?: Partial<ReturnTyp
       { id: 'test', path: f.workspace, profile: 'read', aliases: ['A', 'term4u'] }, { id: 'second', path: second, profile: 'read', aliases: ['B'] }], history: true } });
   const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c); initializeHierarchy(store); f.cleanups.push(() => store.close());
   const controllerInputs: Array<{ role: string; ref: string; text: string; images: readonly ImageRef[] }> = [], parents: unknown[] = [], searches: unknown[] = [];
+  const historyReads: Array<{ sessionRef: string; page: unknown }> = [];
   class ControllerDouble implements ControllerRuntime {
     ref!: ControllerRef; instructions = ''; turn = 0;
     constructor(private role: 'bridge' | 'route') {}
@@ -56,6 +57,12 @@ export async function harness(t: TestContext, directoryModel?: Partial<ReturnTyp
         } else if (text.includes('pure switch')) { answer = 'UNVERIFIED: prior business session restored';
         } else if (text.includes('metadata-only work')) { answer = 'UNEXECUTED_PROJECT_NAME';
         } else if ((text.includes('history') || text.includes('在干啥') || text.includes('续查'))) {
+          if (text.includes('native history')) {
+            const sessions = await handler('list_business_sessions', {}, 'sessions') as { entries: Array<{ sessionRef: string }>; queryFocus?: { sessionRef?: string } };
+            if (text.includes('follow-up')) assert.equal(sessions.queryFocus?.sessionRef, historyReads.at(-1)?.sessionRef);
+            const sessionRef = sessions.queryFocus?.sessionRef ?? sessions.entries[0]!.sessionRef;
+            historyReads.push({ sessionRef, page: await handler('read_business_session', { sessionRef }, 'read') });
+          }
           if (text.includes('host-intent')) {
             const options = await handler('resolve_business_options', {}, 'options') as { delegationIntent: string };
             assert.equal(options.delegationIntent, 'history_query');
@@ -119,6 +126,6 @@ export async function harness(t: TestContext, directoryModel?: Partial<ReturnTyp
   await bridge.start(); f.cleanups.push(() => bridge.stop());
   const pump = new OutboxPump(store, channel, c.reply);
   const settle = async () => { await bridge.idle(); while (await pump.tick()) await pump.idle(); };
-  return { ...f, c, second, store, bridge, media, artifacts, channel, controllerInputs, parents, searches, calls, refs, settle, managementModels,
+  return { ...f, c, second, store, bridge, media, artifacts, channel, controllerInputs, parents, searches, historyReads, calls, refs, settle, managementModels,
     waitForCancel: () => { waitForCancel = true; }, maxActive: () => maxActive };
 }

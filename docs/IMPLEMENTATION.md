@@ -46,6 +46,8 @@ Offline tests launch deterministic child doubles; they do not establish real mod
 
 `ControllerManager` preserves Route native identity across same-directory progress queries. `route_delegate` forwards stored text without rewriting; history intent cannot authorize `business_execute`. `src/history/` reads metadata and bounded native pages on demand, separate from business execution. Read-only queries do not refresh business completion clocks. Controller tool results and prompts have scoped audit hashes.
 
+Route interprets the original query using generic native-session pages; the host does not implement query-specific summary or reply extraction. Its read tool defaults to newest-first and also supports oldest-first, with direction- and revision-bound cursors; both orders retain the 10-message/16-KiB page budget. Same-directory queries retain their session reference in `queryFocus`, exposed by `list_business_sessions`; changing directories clears that reference. Native turn-order anomalies are reported on read-only pages without discarding visible messages. `ResumeVerifier` still rejects those histories before any execution, while path, scope, format and revision checks apply to both reading and resuming.
+
 The former router/classifier tests were replaced with catalog/authority regressions and the shared hierarchical harness. CLI, Weixin, startup, cancellation and maintenance tests now use a deterministic three-layer controller executable plus offline business doubles. Synthetic capability files in test helpers apply only to those fake executables and do not prove live model capability.
 
 ## Approved service management

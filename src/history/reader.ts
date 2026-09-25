@@ -13,10 +13,11 @@ export interface HistoryMessage {
   timestamp: number | null; text: string;
 }
 export interface HistoryPage { messages: HistoryMessage[]; nextCursor?: string; contentTruncated: boolean; omittedKinds: string[]; observedThrough: string }
+export type HistoryOrder = 'oldest-first' | 'newest-first';
 export interface NativeEvidence {
   nativeId: string; cwd: string; activity: 'idle' | 'active' | 'interrupted' | 'unknown'; incomplete: boolean;
   model?: string; reasoning?: string; lastCompletedAt: number | null; lastTurnId?: string;
-  sourceRevision: string; unknownEvents: boolean; page: HistoryPage;
+  sourceRevision: string; unknownEvents: boolean; turnOrderValid: boolean; page: HistoryPage;
 }
 const time = (value: unknown): number | null => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? Date.parse(value) : null;
 const object = (value: unknown): Record<string, unknown> | undefined => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
@@ -30,18 +31,18 @@ function clipped(text: string, bytes: number): string {
 }
 
 export class NativeReader {
-  async readWindow(target: Target, candidate: CandidateMetadata, cursor?: string, signal?: AbortSignal): Promise<HistoryPage> {
-    return (await this.inspect(target, candidate, cursor, signal)).page;
+  async readWindow(target: Target, candidate: CandidateMetadata, cursor?: string, signal?: AbortSignal, order: HistoryOrder = 'oldest-first'): Promise<HistoryPage> {
+    return (await this.inspect(target, candidate, cursor, signal, order)).page;
   }
-  async inspect(target: Target, candidate: CandidateMetadata, cursor?: string, signal?: AbortSignal): Promise<NativeEvidence> {
+  async inspect(target: Target, candidate: CandidateMetadata, cursor?: string, signal?: AbortSignal, order: HistoryOrder = 'oldest-first'): Promise<NativeEvidence> {
     const nativeId = candidate.ref.kind === 'codex' ? candidate.ref.threadId : candidate.ref.sessionId;
-    let after = 0;
+    let position = order === 'newest-first' ? Infinity : 0;
     if (cursor) {
       invariant(cursor.length <= 256 && /^[a-zA-Z0-9_-]+$/.test(cursor), 'HISTORY_CURSOR');
       let value: Record<string, unknown> | undefined;
       try { value = object(JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'))); } catch { /* fail below */ }
-      invariant(value && value.n === nativeId && value.r === candidate.sourceRevision && Number.isSafeInteger(value.p) && (value.p as number) >= 0, 'HISTORY_CURSOR');
-      after = value.p as number;
+      invariant(value && value.n === nativeId && value.r === candidate.sourceRevision && (value.o ?? 'oldest-first') === order && Number.isSafeInteger(value.p) && (value.p as number) >= 0, 'HISTORY_CURSOR');
+      position = value.p as number;
     }
     const root = target.config.backend === 'codex' ? path.join(target.config.codex.home, 'sessions') : target.config.agent.sessionRoot;
     invariant(target.config.backend === candidate.ref.kind && path.isAbsolute(candidate.file) && inside(root, candidate.file), 'HISTORY_PATH');
@@ -54,15 +55,27 @@ export class NativeReader {
       const startStat = await handle.stat();
       invariant(startStat.isFile() && startStat.size <= 256 * 1024 * 1024, 'HISTORY_FILE_LIMIT');
       const evidence: NativeEvidence = { nativeId, cwd: target.directory.path, activity: 'unknown', incomplete: false,
-        lastCompletedAt: null, sourceRevision: candidate.sourceRevision, unknownEvents: false,
+        lastCompletedAt: null, sourceRevision: candidate.sourceRevision, unknownEvents: false, turnOrderValid: true,
         page: { messages: [], contentTruncated: false, omittedKinds: [], observedThrough: candidate.sourceRevision } };
       const omittedKinds = new Set<string>();
       let records = 0, ordinal = 0, bytesVisible = 0, piChars = 0, finalSeen = false, nextPosition: number | undefined, activeTurn: string | undefined;
+      const recentPositions: number[] = [];
       const piRows = new Map<string, { parentId: string | null; message?: HistoryMessage }>(); let piLeaf: string | undefined;
       const message = (role: 'user' | 'assistant', text: string, row: Record<string, unknown>, source: string, purpose: HistoryMessage['purpose'], eventId?: string) => {
         if (!text) return;
         const index = ordinal++;
-        if (index < after) return;
+        if (order === 'newest-first') {
+          if (index >= position) return;
+          const body = clipped(text, 16384);
+          evidence.page.contentTruncated ||= body !== text;
+          evidence.page.messages.push({ role, text: body, nativeEventId: eventId ?? String(row.id ?? 'record:' + records), source, purpose, timestamp: time(row.timestamp) });
+          recentPositions.push(index); bytesVisible += Buffer.byteLength(body);
+          while (evidence.page.messages.length > 10 || bytesVisible > 16384) {
+            bytesVisible -= Buffer.byteLength(evidence.page.messages.shift()!.text); recentPositions.shift();
+          }
+          return;
+        }
+        if (index < position) return;
         if (evidence.page.messages.length >= 10 || bytesVisible >= 16384) { nextPosition ??= index; return; }
         const body = clipped(text, 16384 - bytesVisible);
         if (!body && text) { nextPosition ??= index; return; }
@@ -105,11 +118,14 @@ export class NativeReader {
         } else if (row.type === 'event_msg') {
           invariant(payload && typeof payload.type === 'string', 'HISTORY_FORMAT');
           if (['task_started', 'turn_started'].includes(payload.type)) {
-            invariant(evidence.activity !== 'active', 'HISTORY_TURN_ORDER'); evidence.activity = 'active'; finalSeen = false;
+            if (evidence.activity === 'active') evidence.turnOrderValid = false;
+            evidence.activity = 'active'; finalSeen = false;
             activeTurn = typeof payload.turn_id === 'string' ? payload.turn_id : undefined;
           } else if (['task_complete', 'turn_complete'].includes(payload.type)) {
-            invariant(evidence.activity === 'active' && (!activeTurn || payload.turn_id === activeTurn) && visibleText(payload.last_agent_message).trim(), 'HISTORY_TURN_ORDER');
-            evidence.activity = 'idle'; evidence.lastCompletedAt = time(row.timestamp); evidence.lastTurnId = activeTurn;
+            const valid = evidence.activity === 'active' && (!activeTurn || payload.turn_id === activeTurn) && Boolean(visibleText(payload.last_agent_message).trim());
+            if (!valid) evidence.turnOrderValid = false;
+            evidence.activity = valid ? 'idle' : 'unknown';
+            if (valid) { evidence.lastCompletedAt = time(row.timestamp); evidence.lastTurnId = activeTurn; }
             if (!finalSeen) message('assistant', visibleText(payload.last_agent_message), row, 'codex-completion-event', 'assistant-final');
           } else if (['turn_aborted', 'error'].includes(payload.type)) evidence.activity = 'interrupted';
           else if (payload.type === 'user_message') {
@@ -163,8 +179,13 @@ export class NativeReader {
       const endStat = await handle.stat();
       invariant(startStat.dev === endStat.dev && startStat.ino === endStat.ino && startStat.size === endStat.size && startStat.mtimeMs === endStat.mtimeMs &&
         historyRevision(candidate.file) === candidate.sourceRevision, 'HISTORY_CHANGED');
+      if (!evidence.turnOrderValid) omittedKinds.add('unverified-turn-order');
       evidence.page.omittedKinds = [...omittedKinds];
-      if (nextPosition !== undefined) evidence.page.nextCursor = Buffer.from(JSON.stringify({ n: nativeId, r: candidate.sourceRevision, p: nextPosition })).toString('base64url');
+      if (order === 'newest-first') {
+        evidence.page.messages.reverse();
+        nextPosition = recentPositions[0] && recentPositions[0] > 0 ? recentPositions[0] : undefined;
+      }
+      if (nextPosition !== undefined) evidence.page.nextCursor = Buffer.from(JSON.stringify({ n: nativeId, r: candidate.sourceRevision, p: nextPosition, ...(order === 'newest-first' ? { o: order } : {}) })).toString('base64url');
       return evidence;
     } finally { await handle.close(); }
   }

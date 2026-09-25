@@ -1,4 +1,14 @@
-# 当前验证记录：统一三层入口（2026-09-25）
+# 当前验证记录：原生 session 只读访问与引用续接（2026-09-26）
+
+原始 query 继续透传给 Route，由模型通过通用 session 读取工具理解并回答；未新增按问题类型提取摘要或回复的逻辑。同目录查询保留 session 引用，跨目录清除该引用。通用读取支持双向分页，Route 默认从新到旧读取；只读历史允许带轮次异常标记返回可见文本，恢复执行仍严格拒绝这些异常。
+
+- `npm ci --no-audit --no-fund` exit 0，按 lockfile 安装 16 个包。
+- 初版修复前新增 4 项回归均失败；初版 `npm run check` exit 0，321/321 OFFLINE PASS。最终版 `npm run check` exit 0，**322/322 OFFLINE PASS**，0 failed/cancelled/skipped；新增双向分页回归验证多字节预算、完整遍历与跨方向游标拒绝，原有回归覆盖轮次异常、原文/同一 Route/session 引用续接、不新增业务执行。完整输出为忽略的 `runtime/session-native-check-final.txt`。
+- 对现场两份原生 session 只读复测：修复前均为 `HISTORY_TURN_ORDER`，修复后均返回有界文本页、分页引用和轮次异常标记；未修改原生 session 或生产数据库。
+- 使用现场两句原始 query、12 份真实 term4u 会话的未改写快照和独立本地状态，运行真实 GPT-6 Sol/high。前两轮语义验收 FAIL：分别暴露进度查询误派业务，以及追问转述管理对话/正向分页耗尽预算；修正通用角色指令和分页能力后，第三轮 PASS。第一句依据会话正文总结，第二句沿用同一原生 session，引用与其最后一条可见 commentary 原文逐字一致。Bridge/Route 原生 turn_context 均确认 Sol/high，query 哈希保持一致，0 个业务任务，快照哈希未变，管理进程清理确认。
+- 真实 case 通过的是本地同链路测试，不是手机微信验收；未重放原业务任务。私有日志/回答仅在忽略的 `runtime/session-case-live/`，最终证据 `abcf825e-7f84-48cd-8474-63da92154de0/report.json`，此前失败报告保留；原始会话快照与隔离状态在本机私有 state 目录。
+
+# 此前验证记录：统一三层入口（2026-09-25）
 
 旧 Bridge、Router、临时意图解释器、旧历史扫描器、专用诊断和三个旧 smoke 脚本已删除。保留目录授权/模型选择/目录锁、原生历史读取、Codex/Pi 后端、媒体和 outbox。`routing.interpreter` 明确拒绝，入口不再有旧链路回退。
 

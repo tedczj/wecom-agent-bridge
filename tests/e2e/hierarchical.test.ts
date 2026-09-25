@@ -58,6 +58,23 @@ test('OFFLINE hierarchical chain: read-only cross-directory query preserves acti
   assert.equal(h.calls[1]!.workspaceId, 'test');
   assert.equal(h.store.db.prepare('SELECT count(*) n FROM interaction_records').get()!.n, 3);
 });
+test('OFFLINE native history: original follow-up and session reference reach the same Route without business execution', async t => {
+  const h = await harness(t); await h.bridge.accept(fixture('A work')); await h.settle();
+  const key = h.calls[0]!.sessionKey, clock = h.store.session(key).last_response_at;
+  for (const query of ['A native history', 'A native history follow-up']) {
+    const accepted = await h.bridge.accept(fixture(query)); await h.settle();
+    assert.equal(h.store.get(accepted.taskId!).status, 'succeeded', h.store.get(accepted.taskId!).error_code ?? 'history failed');
+    assert.deepEqual(h.controllerInputs.slice(-2).map(input => input.text), [query, query]);
+  }
+  assert.equal(h.historyReads.length, 2); assert.equal(h.historyReads[0]!.sessionRef, h.historyReads[1]!.sessionRef);
+  assert.deepEqual(h.historyReads[0]!.page, h.historyReads[1]!.page);
+  assert.equal(new Set(h.controllerInputs.filter(input => input.role === 'route').map(input => input.ref)).size, 1);
+  assert.equal(h.calls.length, 1); assert.equal(h.store.session(key).last_response_at, clock);
+  const switched = await h.bridge.accept(fixture('B history')); await h.settle();
+  const scope = h.store.db.prepare('SELECT conversation_scope FROM orchestration_requests WHERE request_id=?').get(switched.taskId!)!.conversation_scope as string;
+  const state = h.store.value<{ queryFocus: { directoryRef: string; sessionRef?: string } }>('orchestration:conversation:' + scope)!;
+  assert.equal(state.queryFocus.directoryRef, 'second'); assert.equal(state.queryFocus.sessionRef, undefined);
+});
 test('OFFLINE hierarchical chain: fast status/cancel enters while Bridge and Route await business', async t => {
   const h = await harness(t); h.waitForCancel();
   const first = await h.bridge.accept(fixture('A wait')); await eventually(() => h.calls.length === 1);

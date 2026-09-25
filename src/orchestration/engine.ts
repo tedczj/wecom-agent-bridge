@@ -343,7 +343,7 @@ export class HierarchicalBridge {
     this.store.db.prepare('UPDATE orchestration_requests SET route_snapshot_json=? WHERE request_id=?').run(JSON.stringify({
       ...(previous.route_snapshot_json ? JSON.parse(previous.route_snapshot_json) : {}), selectedDirectory: directory, profileDigest: target.digest, intentKind: intent }), request.request_id);
     if (intent === 'work' || intent === 'switch') state.activeWorkspace = directory.id;
-    else state.queryFocus = { directoryRef: directory.id, requestId: request.request_id };
+    else state.queryFocus = { ...(state.queryFocus?.directoryRef === directory.id ? state.queryFocus : {}), directoryRef: directory.id, requestId: request.request_id };
     this.store.put('orchestration:conversation:' + scope, state);
     let selected: SelectedBusiness | undefined, business: Promise<JobResultEnvelope> | undefined, binding: EffectBinding, intentConflict = false, selectionRequired = false;
     const history = new HistoryReferences(this.store);
@@ -385,10 +385,14 @@ export class HierarchicalBridge {
         })();
         return business;
       },
-      list_business_sessions: args => history.list(scope, target, args.cursor as string | undefined, args.limit as number | undefined),
+      list_business_sessions: async args => {
+        const page = await history.list(scope, target, args.cursor as string | undefined, args.limit as number | undefined);
+        const focus = readConversationState(this.store, scope).queryFocus;
+        return { ...page, queryFocus: focus?.directoryRef === directory.id ? focus : undefined };
+      },
       read_business_session: async args => {
         const candidate = await history.get(scope, target, args.sessionRef as string);
-        const page = await new NativeReader().readWindow(target, candidate, args.cursor as string | undefined, abort.signal);
+        const page = await new NativeReader().readWindow(target, candidate, args.cursor as string | undefined, abort.signal, args.order === 'oldest-first' ? 'oldest-first' : 'newest-first');
         const state = readConversationState(this.store, scope), owner = this.store.nativeOwner(candidate.ref);
         state.queryFocus = { directoryRef: directory.id, sessionRef: args.sessionRef as string, sessionKey: owner?.session_key, requestId: request.request_id };
         this.store.put('orchestration:conversation:' + scope, state); return page;

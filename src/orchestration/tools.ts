@@ -37,7 +37,7 @@ const route = [
   tool('select_business_session', 'Select the host default option only. Non-default entries need a new explicit user choice resolved with intent=new or sessionRef; unknown discovery must be clarified. Selection alone does not execute work.', { optionToken: string() }),
   tool('business_execute', 'Submit this request once, using the original text from the request store. Never supply text or history.', { selectionToken: string() }),
   tool('list_business_sessions', 'Read this authorized directory’s bounded native session metadata.', { limit: integer(1, 10), cursor: string() }, []),
-  tool('read_business_session', 'Read a bounded page from a host-issued session reference. Reading is not permission to resume.', { sessionRef: string(), cursor: string() }, ['sessionRef']),
+  tool('read_business_session', 'Read native session messages, newest-first by default. Use order=oldest-first to read forward from the beginning. Continue nextCursor with the same order; copy it exactly. Reading is not permission to resume.', { sessionRef: string(), cursor: string(), order: choice('oldest-first', 'newest-first') }, ['sessionRef']),
   tool('read_answer_outline', 'Read headings of an authorized original answer; never forward the original to Bridge.', { answerRef: string() }),
   tool('read_answer_range', 'Read up to 16 KiB of an authorized original answer. Offsets are UTF-8 bytes.', { answerRef: string(), start: integer(0, Number.MAX_SAFE_INTEGER), limit: integer(4, 16384) }, ['answerRef', 'start']),
 ];

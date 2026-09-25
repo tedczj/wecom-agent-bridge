@@ -17,6 +17,7 @@ export class ResumeVerifier {
     invariant(target.digest === profileDigest && target.config.backend === candidate.ref.kind, 'PROFILE_CHANGED');
     invariant(await this.readiness.check(target, candidate.ref, signal) === 'idle', 'HISTORY_WRITER_UNVERIFIED');
     const evidence = await this.reader.inspect(target, candidate, undefined, signal);
+    invariant(evidence.turnOrderValid, 'HISTORY_TURN_ORDER');
     invariant(!evidence.incomplete && !evidence.unknownEvents, 'HISTORY_UNVERIFIED');
     if (candidate.ref.kind === 'codex') {
       invariant(evidence.activity === 'idle', 'HISTORY_NOT_SETTLED');

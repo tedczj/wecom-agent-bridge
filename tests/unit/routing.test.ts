@@ -62,6 +62,15 @@ test('configuration: legacy interpreter rejected and missing hierarchy never fal
   await assert.rejects(openService(h.c, output().stream), /HIERARCHICAL_CONFIG_REQUIRED/);
   assert.throws(() => parseRouting({ interpreter: {} }), /ROUTING_INTERPRETER_REMOVED/);
 });
+test('fallback directory: configuration must name a configured workspace and preserves its authority checks', t => {
+  const h = catalogFixture(t), routing = h.c.routing!;
+  assert.equal(parseRouting({ ...routing, fallbackWorkspace: 'term4u' }).fallbackWorkspace, 'term4u');
+  assert.throws(() => parseRouting({ ...routing, fallbackWorkspace: 'missing' }), /ROUTING_FALLBACK_MISSING/);
+  assert.throws(() => parseRouting({ ...routing, fallbackWorkspace: h.outside }), /ROUTING_CONFIG_ID/);
+  h.c.routing = parseRouting({ ...routing, fallbackWorkspace: 'term4u', workspaces: routing.workspaces.map(w =>
+    w.id === 'term4u' ? { ...w, path: h.c.stateRoot } : w) });
+  assert.throws(() => new Catalog(h.c), /DIRECTORY_PRIVATE/);
+});
 test('model defaults: business, Bridge, Route and recap share Sol/high; window remains explicit', t => {
   const h = setup(t), example = JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
   delete example.orchestration.bridge.modelProfile; delete example.orchestration.business.defaultModelProfile; delete example.orchestration.answers.recapModelProfile;

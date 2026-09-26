@@ -24,6 +24,8 @@
 
 `routing.roots` 是目录授权边界；普通发现限定在 `~/workspace`。先匹配项目名称和别名，再进行有界目录搜索；同一会话的相同搜索保留分页进度。外部绝对路径必须由用户明确提出，未授权路径需通过同会话 `/approve` 授权，授权前不读取目录内容。授权只覆盖该物理目录，不改变沙箱或扩大根权限；配置变化、路径替换、过期或问题未完整送达均拒绝。
 
+可设置 `routing.fallbackWorkspace` 为已登记的 workspace ID，例如将 `temp` 登记到 `~/workspace/temp`（配置需写绝对路径，目录需预先存在，Codex 使用时需为 Git 仓库）。未定位到项目且不属于已有业务连续对话的普通问答、搜索和图片请求交给此目录的业务 Agent。纯图片也从第一条起委派，后续文字复用同一业务会话的原生图片上下文。明确项目、强制目录选择和已有业务续接优先；真实目录歧义、目录授权和指定项目历史查询仍按原规则处理。未配置时保留原来的目录澄清行为。示例见 `config.routing.example.json`。
+
 | 控制命令 | 行为 |
 |---|---|
 | `/route 目录`、`/alias 简称` | 切换目录或保存当前目录别名 |
@@ -60,6 +62,7 @@ cp config.example.json config.local.json
 | `stateRoot` | 私有状态目录，不能位于工作目录内 |
 | `codex.home` | 已登录的 Codex 配置/认证/会话目录，不能位于工作目录内 |
 | `codex.sandbox` | 默认 `read-only`；需要修改工作区时设为 `workspace-write` |
+| `codex.networkAccess` | 业务联网开关；`true` 启用原生实时网页搜索，并允许配置的 workspace-write 执行环境联网；Bridge／Route 管理层仍禁用网页搜索 |
 
 管理运行时必须使用通过受限工具/禁止原生压缩探测的 Codex app-server；参考 [运行时兼容说明](docs/THREE_LAYER_RUNTIME_COMPATIBILITY.md)。先执行：
 

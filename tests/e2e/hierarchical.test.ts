@@ -16,6 +16,30 @@ import { duplicateMeter } from '../live/duplicate-meter.ts';
 import type { ImageRef } from '../../src/types.ts';
 
 import { harness } from '../hierarchical-helpers.ts';
+test('OFFLINE fallback: image and following query use one business session despite unrelated query focus', async t => {
+  const h = await harness(t, undefined, undefined, 'second');
+  await h.bridge.accept(fixture('A history')); await h.settle();
+  const file = path.join(h.root, 'fallback-image.png');
+  await sharp({ create: { width: 8, height: 8, channels: 3, background: 'red' } }).png().toFile(file);
+  const first = await h.bridge.accept(fixture('', 'default', undefined, [file]));
+  const second = await h.bridge.accept(fixture('搜一下这款啤酒的评价')); await h.settle();
+  assert.equal(h.store.get(first.taskId!).status, 'succeeded');
+  assert.equal(h.store.get(second.taskId!).status, 'succeeded');
+  assert.equal(h.calls.length, 2);
+  assert.deepEqual(h.calls.map(call => [call.workspaceId, call.text, call.images.length]), [
+    ['second', '', 1], ['second', '搜一下这款啤酒的评价', 0],
+  ]);
+  assert.equal(h.calls[0]!.sessionKey, h.calls[1]!.sessionKey);
+  assert.deepEqual(h.refs[1], JSON.parse(h.store.session(h.calls[0]!.sessionKey).agent_ref_json!));
+  const imageInputs = h.controllerInputs.filter(input => input.text === '');
+  assert.deepEqual(imageInputs.map(input => input.role), ['bridge', 'route']);
+  assert.ok(imageInputs.every(input => input.images[0]?.sha256 === h.calls[0]!.images[0]!.sha256));
+  await h.bridge.accept(fixture('A work')); await h.settle();
+  await h.bridge.accept(fixture('继续')); await h.settle();
+  assert.deepEqual(h.calls.slice(2).map(call => call.workspaceId), ['test', 'test']);
+  await h.bridge.accept(fixture('ambiguous work')); await h.settle();
+  assert.equal(h.calls.length, 4);
+});
 test('OFFLINE session identity: business creation and Route replies retain distinct persisted roles and handoff provenance', async t => {
   const h = await harness(t);
   const work = await h.bridge.accept(fixture('A work')); await h.settle();

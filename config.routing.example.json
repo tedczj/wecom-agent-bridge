@@ -27,6 +27,7 @@
     "contextWindowTokens": 828400
   },
   "routing": {
+    "fallbackWorkspace": "temp",
     "roots": [
       {
         "id": "projects",
@@ -42,6 +43,13 @@
       }
     ],
     "workspaces": [
+      {
+        "id": "temp",
+        "path": "/absolute/path/to/home/workspace/temp",
+        "profile": "codex-read",
+        "aliases": [],
+        "description": "无项目归属的日常问答与图片会话"
+      },
       {
         "id": "bridge",
         "path": "/absolute/path/to/home/workspace/bridge",

@@ -8,6 +8,8 @@ Removed: `bridge.ts`, `debug.ts`, `routing/router.ts`, `routing/intent.ts`, `rou
 
 Defaults are `gpt-6-sol / high` for business and Bridge; Route inherits Bridge and recap profile defaults to Bridge. The effective window is required explicitly. Per-request and explicit business-session model overrides preserve management models. Runtime evidence is tied to the actual selected model and effort.
 
+`routing.fallbackWorkspace` optionally references an existing configured workspace; parsing rejects unknown IDs and Catalog retains all normal directory/profile checks. `list_directories` exposes `fallbackDirectoryRef`. Bridge/Route instructions delegate unassigned general questions and image-only messages to business, retaining native session continuity for follow-up text. Intent remains model-selected; offline doubles verify the host path and do not prove live routing semantics. Policy digest changes rotate existing management sessions through the normal handoff path.
+
 Session identity is persisted in `native_session_catalog`, keyed by backend home, backend and native ID. Bridge/Route/Recap creation records their management role. Business session persistence atomically records `business` before the first prompt; native discovery records unbound sessions as `external`, preserving `unknown` when present. These role records are metadata, not proof of completion or resumability. Management roles cannot be promoted to business and remain excluded from native listing and exact lookup. Interaction projections and controller handoff retain `producerRole` and business binding references; native message reads return the native ID and persisted role. A Route-written history recap remains Route output, even when it describes a business session.
 
 ## Shared execution and delivery
@@ -29,6 +31,8 @@ Text replies use the paired owner's latest context token and the durable outbox.
 ## Agent backends and lifecycle
 
 Codex uses the installed CLI's exec JSONL protocol, with an explicit working directory, sandbox and thread ID on resume. Successful completion requires ordered events, final assistant text, turn.completed, exit 0 and confirmed owned-process-group cleanup. Temporary EPERM during teardown is accepted only after the group actually disappears. Forced cancellation remains interrupted because side effects may exist.
+
+Business Codex web search follows `codex.networkAccess`: true passes `web_search="live"`, false passes `disabled`, for both new and resumed turns. The existing sandbox/permission profile controls command networking separately using the same flag. Management controllers and the legacy routing-only invocation retain disabled web search. No additional configuration field or filesystem permission expansion is introduced.
 
 Pi uses the installed RPC executable and waits for agent_settled. Extensions cannot auto-approve UI requests. Pi requires operator-verified external isolation; POSIX process-group control supports macOS/Linux, not Windows process-tree management.
 

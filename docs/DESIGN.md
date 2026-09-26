@@ -8,11 +8,15 @@ Both personal Weixin ClawBot and local CLI/JSONL use `HierarchicalBridge` exclus
 
 Project names and aliases take priority over recursive discovery. Discovery is confined to `~/workspace`, intersected with authorized roots. Directory search pages are scoped to conversation, query and configuration and resume across requests. An external directory proposal must appear as an absolute path in the original request. A grant requires explicit same-conversation consent after complete delivery of the question, with expiry, physical identity and profile revalidation.
 
+Optional `routing.fallbackWorkspace` names a configured, authorized workspace for requests without a resolved project or applicable active business conversation. Bridge receives its reference from `list_directories` and delegates general questions and image-only inputs as work; Route executes them in the selected business session. Later text retains image context through native session continuation, without copying historical attachments. Explicit targets, forced selections and business continuations take priority. Fallback does not bypass genuine directory ambiguity, authorization or specific-project history lookup. Unconfigured fallback retains directory clarification.
+
 Progress queries such as “看下 term4u 项目里在干啥” reach that directory's Route verbatim. Route reads native business session messages progressively and reports coverage limits; it need not scan all native history before answering. Session follow-ups refer to that native session unless the user explicitly asks about Weixin management chat. Session roles are persisted in the Bridge catalog; interaction summaries and handoff records preserve the reply's producer role. A Route recap cannot serve as a native Agent reply. Query focus and active execution workspace remain distinct. No business job or successful-response clock update is caused by reading history.
 
 ## Models and sessions
 
 The fallback business profile and Bridge default to `gpt-6-sol / high`; Route inherits Bridge and recap defaults to the same profile. Window capacity remains explicitly configured and verified by runtime evidence. Business model precedence is request > explicit session preference > directory > daily, tracked per field. Business overrides never mutate management profiles.
+
+Business networking uses the configured `codex.networkAccess` flag: enabling it selects live native web search and permits networking in the workspace-write execution profile. Disabling it removes native web search and retains restricted command networking. Bridge/Route management tools remain restricted, with web search disabled. The live search setting follows the [official configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference#web_search).
 
 `ControllerManager` owns separate Bridge/Route generations, native references and runtime usage. Usage at 80% requests a new session with a bounded handoff; raw answers are not exposed to Bridge. Unknown usage or incomplete capability evidence blocks rather than enabling a fallback. Controller initialization is lazy.
 

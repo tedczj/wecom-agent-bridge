@@ -20,13 +20,13 @@ import type { AgentBackend, ImageRef, NormalizedInput, SessionRef } from '../src
 import type { TestContext } from 'node:test';
 
 export async function harness(t: TestContext, directoryModel?: Partial<ReturnType<typeof setup>['c']['codex']>,
-  beforeStart?: (state: { store: Store; c: ReturnType<typeof parseConfig>; artifacts: ArtifactStore; controllers: ControllerManager; sessions: BusinessSessions }) => Promise<void>) {
+  beforeStart?: (state: { store: Store; c: ReturnType<typeof parseConfig>; artifacts: ArtifactStore; controllers: ControllerManager; sessions: BusinessSessions }) => Promise<void>, fallbackWorkspace?: string) {
   const f = setup(t), second = path.join(f.root, 'second'); mkdirSync(second);
   const example = JSON.parse(readFileSync('docs/plans/three-layer-agent-bridge/config.hierarchical.example.json', 'utf8'));
   example.orchestration.controllerRuntime.workRoot = path.join(f.c.stateRoot, 'controllers'); example.orchestration.answers.root = path.join(f.c.stateRoot, 'artifacts');
   const c = parseConfig({ ...f.c, codex: { ...f.c.codex, model: 'gpt-6-sol', reasoning: 'high' },
     models: { daily: { model: 'gpt-6-sol', reasoning: 'high', contextWindowTokens: 1000000 }, alternate: { model: 'gpt-6-sol', reasoning: 'low', contextWindowTokens: 1000000 } }, orchestration: example.orchestration,
-    routing: { roots: [{ id: 'all', path: f.root, profile: 'read' }], profiles: [{ id: 'read', version: '1', codex: directoryModel }], workspaces: [
+    routing: { fallbackWorkspace, roots: [{ id: 'all', path: f.root, profile: 'read' }], profiles: [{ id: 'read', version: '1', codex: directoryModel }], workspaces: [
       { id: 'test', path: f.workspace, profile: 'read', aliases: ['A', 'term4u'] }, { id: 'second', path: second, profile: 'read', aliases: ['B'] }], history: true } });
   const store = new Store(path.join(c.stateRoot, 'bridge.sqlite'), c); initializeHierarchy(store); f.cleanups.push(() => store.close());
   const controllerInputs: Array<{ role: string; ref: string; text: string; images: readonly ImageRef[] }> = [], parents: unknown[] = [], searches: unknown[] = [];
@@ -41,7 +41,7 @@ export async function harness(t: TestContext, directoryModel?: Partial<ReturnTyp
       if (!text.startsWith('Initialize this management')) {
         controllerInputs.push({ role: this.role, ref: ref.threadId, text, images });
         if (this.role === 'bridge') {
-          const directories = await handler('list_directories', {}, 'list') as { activeWorkspace?: string; forcedDirectoryRef?: string };
+          const directories = await handler('list_directories', {}, 'list') as { activeWorkspace?: string; forcedDirectoryRef?: string; fallbackDirectoryRef?: string };
           if (text.startsWith('search ')) {
             const [, directoryRef, ...words] = text.split(' ');
             searches.push(await handler('search_interactions', { directoryRef, query: words.join(' ') }, 'search')); answer = 'search completed';
@@ -50,7 +50,7 @@ export async function harness(t: TestContext, directoryModel?: Partial<ReturnTyp
           } else if (text === 'ambiguous work' && !directories.forcedDirectoryRef) {
             await handler('clarify_directory', { question: '选 A 还是 B？', option1: 'test', option2: 'second' }, 'clarify'); answer = '选 A 还是 B？';
           } else {
-            const selected = directories.forcedDirectoryRef ?? (text.includes('B') ? 'second' : text.includes('A') ? 'test' : directories.activeWorkspace ?? 'test');
+            const selected = directories.forcedDirectoryRef ?? (text.includes('B') ? 'second' : text.includes('A') ? 'test' : directories.activeWorkspace ?? directories.fallbackDirectoryRef ?? 'test');
             const result = await handler('route_delegate', { directoryRef: selected, intentKind: (text.includes('history') || text.includes('在干啥') || text.includes('续查')) ? 'history_query' : text.includes('switch') ? 'switch' : 'work' }, 'delegate'); parents.push(result);
             answer = 'Bridge must not replace the business original';
           }

@@ -290,7 +290,8 @@ export class HierarchicalBridge {
         limit: args.limit as number | undefined, beforeSeq: args.beforeSeq as number | undefined });
     } });
     const handlers: ToolHandlers = {
-      ...shared(), list_directories: async () => ({ directories: this.directories(scope), ...readConversationState(this.store, scope), forcedDirectoryRef }),
+      ...shared(), list_directories: async () => ({ directories: this.directories(scope), ...readConversationState(this.store, scope), forcedDirectoryRef,
+        fallbackDirectoryRef: this.c.routing!.fallbackWorkspace }),
       search_directories: async args => {
         const found = await this.authority.search(scope, args.query as string);
         for (const directory of found.scan.matches) this.directoryCache.set(scope + ':' + directory.id, directory);

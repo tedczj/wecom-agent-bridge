@@ -10,6 +10,33 @@ import type { RunHooks,SessionRef } from '../../src/types.ts';
 import { setup,input,eventually } from '../helpers.ts';
 import { parseConfig } from '../../src/config.ts';
 import { createBackend } from '../../src/main.ts';
+import { controllerPolicy } from '../../src/controllers/codex-app-server.ts';
+
+test('OFFLINE Codex networking: business search follows network access on new and resumed turns, management stays disabled', async t => {
+  const h = setup(t);
+  for (const networkAccess of [true, false]) {
+    h.c.codex.networkAccess = networkAccess; h.c.codex.sandbox = 'workspace-write';
+    for (const saved of [undefined, { kind: 'codex' as const, threadId: randomUUID() }]) {
+      const args = codexArgs(h.c, [], saved, undefined, true);
+      const search = `web_search="${networkAccess ? 'live' : 'disabled'}"`;
+      assert.equal(args.filter(arg => arg.startsWith('web_search=')).length, 1);
+      assert.ok(args.includes(search));
+      assert.ok(args.find(arg => arg.startsWith('permissions='))!.includes(`network={enabled=${networkAccess}}`));
+      if (saved) assert.ok(args.indexOf(search) < args.indexOf('resume'));
+    }
+  }
+  h.c.codex.networkAccess = true;
+  const backend = createBackend(h.c, new MediaStore(h.c), true);
+  const first = await backend.run(input(), undefined, hooks().value, new AbortController().signal);
+  assert.equal(first.outcome, 'success');
+  const second = await backend.run(input(), first.sessionRef, hooks().value, new AbortController().signal);
+  assert.equal(second.outcome, 'success'); await backend.stop();
+  const captured = JSON.parse(readFileSync(path.join(h.c.codex.home, 'capture.json'), 'utf8'));
+  assert.ok(captured.args.includes('web_search="live"')); assert.ok(captured.args.includes('resume'));
+  h.c.codex.sandbox = 'read-only';
+  assert.ok(codexArgs(h.c, [], undefined, { schemaPath: 'schema.json', instructionsPath: 'instructions.md' }).includes('web_search="disabled"'));
+  assert.equal(controllerPolicy.web_search, 'disabled');
+});
 
 test('OFFLINE Codex model window: validated config reaches exec and explicit resume arguments', t => {
   const h = setup(t), c = parseConfig({ ...h.c, codex: { ...h.c.codex, contextWindowTokens: 828400 } });

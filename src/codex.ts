@@ -23,7 +23,7 @@ export function codexArgs(c: Config, images: ImageRef[], saved?: SessionRef, rou
     ['--sandbox', c.codex.sandbox, '--config', `sandbox_workspace_write.network_access=${c.codex.networkAccess}`];
   const args = ['exec', '--json', ...permissions, '--cd', c.workspace.path,
     '--config', 'approval_policy="never"',
-    '--config', 'web_search="disabled"'];
+    '--config', `web_search="${!routing && c.codex.networkAccess ? 'live' : 'disabled'}"`];
   // Native exec otherwise persists implicit project trust for workspace-write.
   // Hierarchical authority comes from the host profile, not project-local config.
   // Codex splits dotted override keys literally, so encode the path in a TOML table value.

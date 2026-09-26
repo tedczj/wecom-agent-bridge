@@ -1,4 +1,24 @@
-# 当前验证记录：持久会话角色与回复来源（2026-09-26）
+# 当前验证记录：业务 Agent 联网与原生搜索（2026-09-26）
+
+删除业务 Codex 一律禁用网页搜索的旧参数：`codex.networkAccess=true` 时使用 `web_search="live"`，false 时保持 disabled；新建与 resume 均适用。管理控制器保持 disabled。本机所有五个已配置业务目录（含 temp）均验证为 networkAccess=true、执行权限 network.enabled=true、web_search=live，文件权限未扩大。
+
+- `npm ci --no-audit --no-fund` exit 0，按 lockfile 安装 16 个包。新增回归修复前 exit 1，复现 networkAccess=true 仍缺少 live 搜索参数；日志 `runtime/business-network-before.txt`。
+- 首次全量检查 326 passed / 1 failed：原有 XDG=true 启动用例报 INTERNAL_ERROR；该项与配套默认配置用例单独复测 2/2 通过，未改动启动代码。全量重跑 `npm run check` exit 0，**327/327 OFFLINE PASS**，0 failed/cancelled/skipped。新回归覆盖网络开关、新建/resume、真实子进程参数传递、业务网络 profile 及管理搜索禁用。日志 `runtime/business-network-check.txt`、`runtime/business-network-start-recheck.txt`、`runtime/business-network-check-final.txt`；首轮偶发失败原因未确定。
+- `node runtime/business-network-smoke.mjs --live` exit 0，在独立临时 Git 目录和状态中调用实际 Codex 0.155.1、gpt-6-sol/high：原生 web 工具搜索返回 IANA Example Domains 页面；沙箱 shell 执行 `curl --fail --silent --show-error --max-time 20 https://example.com`，原生 CommandExecution 记录 exit_code=0、标题 Example Domain。完成证据包含 thread/turn、最终回答、turn.completed、exit 0 和 cleanupConfirmed；原生记录哈希及结果在私有 `runtime/business-network-live-result.json`，脚本、日志及模型回答不提交。
+- 这是业务适配器真实联网验证，未发送微信消息，未进行手机端到端验收，也不代表任意站点可达或完整 OS 隔离。
+- 本机重启前无活动请求/任务、未决投递或 Agent 标记；重启后新 supervisor/worker 父子关系正确，微信接收已启动，无活动请求。证据 `runtime/business-network-restart.json`、`runtime/business-network-restart.log`，未重放旧消息。
+
+# 此前验证记录：无项目请求的兜底目录（2026-09-26）
+
+现场图片及其后续文字都由 Bridge 直接回复目录/用途澄清，没有委派 Route 或业务。新增可选 `routing.fallbackWorkspace`，必须引用已配置并通过目录权限校验的 workspace。Bridge 通过 `list_directories.fallbackDirectoryRef` 获取兜底位置；管理指令将无项目普通问答及纯图片委派业务，后续文字复用原生业务会话。
+
+- `npm ci --no-audit --no-fund` exit 0，按 lockfile 安装 16 个包，未升级依赖。
+- 补齐配置解析后、接入宿主目录元数据前，新增链路回归 exit 1：图片及文字落在夹具旧默认目录，而非配置的兜底目录。证据 `runtime/fallback-regression-before.txt`。
+- `npm run check` exit 0，**326/326 OFFLINE PASS**，0 failed/cancelled/skipped；覆盖未知兜底 ID/非法路径拒绝、私有目录拒绝、无关历史焦点下的纯图片及后续文字委派、同一业务会话/图片哈希/原文保留、显式项目优先、业务续接及歧义不自动执行。输出 `runtime/fallback-check.txt`。
+- 离线控制器 double 证明宿主链路，不证明真实模型必然采用兜底或理解图片。兜底阶段未进行真实模型或手机微信验收；该阶段的路由修复不等于联网检索验收。业务搜索现改为跟随 `codex.networkAccess`，联网验证见本文件最新记录。
+- 本机私有配置已将 `temp` 登记为兜底目录，目录 Git 元数据已初始化，现有文件未暂存或提交。重启前确认无活动请求/任务、未决投递或 Agent 标记；重启后核对新 supervisor/worker 父子关系、微信接收启动和无活动请求，未重放旧消息。证据 `runtime/fallback-restart.json`、`runtime/fallback-restart.log`；私有配置与运行数据不提交。
+
+# 此前验证记录：持久会话角色与回复来源（2026-09-26）
 
 现场微信追问仍出现 Route 引用自己的上一条回复。只读核查确认：截图两次请求的回复来源均为 Route；第二次虽列出原生会话，却没有读取正文。已有管理角色登记和原生候选过滤，但业务会话未在创建时同步登记，交互摘要与换代交接也未传递数据库已有的 `producer_role`。此前局部真实模型通过不能代表这次现场语义通过。
 

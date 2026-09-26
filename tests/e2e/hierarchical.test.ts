@@ -16,8 +16,15 @@ import { duplicateMeter } from '../live/duplicate-meter.ts';
 import type { ImageRef } from '../../src/types.ts';
 
 import { harness } from '../hierarchical-helpers.ts';
-test('OFFLINE fallback: image and following query use one business session despite unrelated query focus', async t => {
-  const h = await harness(t, undefined, undefined, 'second');
+test('OFFLINE fallback: image and following query use one business session despite external history and unrelated query focus', async t => {
+  const h = await harness(t, undefined, async ({ c }) => {
+    const root = path.join(c.codex.home, 'sessions'); mkdirSync(root, { recursive: true });
+    const cwd = c.routing!.workspaces.find(w => w.id === 'second')!.path;
+    for (let i = 0; i < 2; i++) {
+      const id = randomUUID();
+      writeFileSync(path.join(root, id + '.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id, cwd } }) + '\n');
+    }
+  }, 'second');
   await h.bridge.accept(fixture('A history')); await h.settle();
   const file = path.join(h.root, 'fallback-image.png');
   await sharp({ create: { width: 8, height: 8, channels: 3, background: 'red' } }).png().toFile(file);
@@ -26,6 +33,9 @@ test('OFFLINE fallback: image and following query use one business session despi
   assert.equal(h.store.get(first.taskId!).status, 'succeeded');
   assert.equal(h.store.get(second.taskId!).status, 'succeeded');
   assert.equal(h.calls.length, 2);
+  const selection = h.store.value<{ option: { reason: string } }>('business-selection:' + first.taskId)!;
+  assert.equal(selection.option.reason, 'fallback-new');
+  assert.equal(h.store.value('discovery-unverified:' + first.taskId), undefined);
   assert.deepEqual(h.calls.map(call => [call.workspaceId, call.text, call.images.length]), [
     ['second', '', 1], ['second', '搜一下这款啤酒的评价', 0],
   ]);

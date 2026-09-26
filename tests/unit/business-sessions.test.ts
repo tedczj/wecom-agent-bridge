@@ -53,6 +53,25 @@ function configured(f: ReturnType<typeof setup>) {
   };
   return { store, requests, registry, target, first, request, binding, sessions, dispatch, create, complete, setNow: (value: number) => { now = value; }, now: () => now };
 }
+test('OFFLINE fallback selection: unbound work starts fresh without discovery and then reuses its pending binding', async t => {
+  const h = configured(setup(t)), b = h.binding();
+  t.mock.method(NativeCatalog.prototype, 'listMetadata', async () => { throw new Error('fallback must not discover unrelated history'); });
+  const options = await h.sessions.resolve(b, h.target, 'automatic', undefined, true);
+  const option = options.options.find(o => o.isDefault)!;
+  assert.equal(option.reason, 'fallback-new'); assert.equal(options.needsClarification, false);
+  const selected = await h.sessions.select(b, h.target, option.optionToken);
+  const job = h.store.atomic(() => {
+    const job = h.dispatch.enqueue(b, selected.token, selected.selection, () => h.sessions.validate(b, h.target, selected));
+    h.sessions.bind(b, h.target, selected, job); return job;
+  });
+  const next = h.binding(h.request().request_id);
+  const continuation = await h.sessions.resolve(next, h.target, 'automatic', undefined, true);
+  assert.equal(continuation.options.find(o => o.isDefault)!.reason, 'binding-pending');
+  const resumed = await h.sessions.select(next, h.target, continuation.options.find(o => o.isDefault)!.optionToken);
+  assert.equal(resumed.selection.sessionKey, job.session_key);
+  h.store.db.prepare("UPDATE sessions SET state='tainted' WHERE session_key=?").run(job.session_key);
+  await assert.rejects(h.sessions.resolve(next, h.target, 'automatic', undefined, true), /SESSION_TAINTED/);
+});
 test('OFFLINE M4: no history creates one binding; pending first reply reuses it without discovering other native files', async t => {
   const f = setup(t), h = configured(f), { job } = await h.create();
   assert.equal(h.store.db.prepare('SELECT count(*) n FROM business_bindings').get()!.n, 1);
@@ -126,6 +145,7 @@ test('OFFLINE partial metadata: a real empty first page retains coverage/cursor 
   assert.equal(options.needsClarification, true); assert.equal(options.nextCursor, '10'); assert.ok(options.options.every(option => !option.isDefault));
   await assert.rejects(h.sessions.select(b, h.target, options.options[0]!.optionToken), /HISTORY_DISCOVERY_UNVERIFIED/);
   await assert.rejects(h.sessions.resolve(b, h.target, 'new'), /HISTORY_DISCOVERY_UNVERIFIED/);
+  await assert.rejects(h.sessions.resolve(b, h.target, 'automatic', undefined, true), /HISTORY_DISCOVERY_UNVERIFIED/);
   assert.equal(h.store.db.prepare('SELECT count(*) n FROM jobs').get()!.n, 0);
   const explicit = await h.sessions.resolve(h.binding(h.request('new independent request').request_id), h.target, 'new');
   assert.equal(explicit.options[0]!.isDefault, true);

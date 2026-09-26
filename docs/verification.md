@@ -1,4 +1,17 @@
-# 当前验证记录：业务 Agent 联网与原生搜索（2026-09-26）
+# 当前验证记录：兜底会话首次创建与纯图片输入（2026-09-26）
+
+现场请求 `5f6d6e47` 已到达 temp Route，但该微信对话尚无业务绑定。原实现扫描出 5 个外部原生会话，完成时间均未确认，因而没有默认选项，宿主返回 /sessions 与 /resume 提示。此前空历史夹具没有覆盖这个条件。兜底目录的普通工作现在在无绑定时直接提供 `fallback-new`；已有绑定和显式历史候选优先，失败恢复、taint 与普通项目历史发现规则保留。
+
+真实三层验证进一步发现 Codex exec 在纯图片 + 空 stdin 时于创建原生 thread 前退出。适配器现在仅对带图的空/纯空白文字传入 `--` 及精确的空白 positional prompt，非空文字仍走 stdin；分隔符避免空文本被当作图片路径，不伪造用户指令或改变图片。子进程 double 同步覆盖原生 CLI 的空 stdin 拒绝及图像参数分隔行为。
+
+- `npm ci --no-audit --no-fund` exit 0。有外部历史的兜底链路回归、原生空 stdin 行为回归在修复前分别 exit 1，日志 `runtime/fallback-session-before.txt`、`runtime/fallback-image-before.txt`。
+- 最终 `npm run check` exit 0，**329/329 OFFLINE PASS**，0 failed/cancelled/skipped；包括兜底不扫描外部历史、待完成绑定续接、taint/已有失败不被绕过、纯图片新建及 resume 空白原文和图片哈希保留。日志 `runtime/fallback-session-check-final.txt`。
+- 首轮真实三层验证成功选择 fallback-new，但业务 CLI 因空 stdin 失败；第二轮被首轮失败测试保留的物理目录锁拒绝。已核查该锁仅属于退出的临时测试实例、没有 Agent 标记、没有创建原生业务 thread，使用现有 reviewWorkspaceLock 释放该测试锁；保留失败状态，不重跑原请求。证据 `runtime/fallback-session-live-report-first.json`、`runtime/fallback-session-live-report-second.json`、`runtime/fallback-session-owned-lock-review.json`。
+- 第三轮暴露空 positional prompt 仍会被变长 `--image` 参数吞入；已补 `--` 分隔符，安装的 CLI 参数解析核查通过，并按相同归属检查释放第三轮测试保留的锁。失败记录 `runtime/fallback-session-live-report-third.json`、`runtime/fallback-session-owned-lock-review-third.json` 保留；每轮使用新的临时状态和请求，不重放生产请求。
+- 最终真实三层验证 **PASS**：使用实际 temp 目录、原有 5 个完成时间未知的 native 候选和无关 term4u queryFocus，在独立 local 状态、read-only 业务权限下发送合成纯红图片及后续问题。第一轮 `fallback-new`，第二轮 `binding`，同一原生业务 thread，两次均有完整业务完成证据，后续回答“红色”。原生记录确认一条图片输入、第二轮无图片、两次完成；未通过复制旧图片或拼接上下文实现。报告 `runtime/fallback-session-live-report.json`，包含原生记录哈希；未发送微信消息或重放生产请求，手机验收仍未运行。
+- 增加 CLI 分隔符后的一轮全量检查再次遇到此前 XDG=true 启动用例偶发 INTERNAL_ERROR（328 passed / 1 failed）；未修改启动代码，原失败保留为 `runtime/fallback-session-check-cli-separator-first.txt`。最终全量重跑 329/329 通过；该独立偶发启动问题原因仍未确定。
+
+# 此前验证记录：业务 Agent 联网与原生搜索（2026-09-26）
 
 删除业务 Codex 一律禁用网页搜索的旧参数：`codex.networkAccess=true` 时使用 `web_search="live"`，false 时保持 disabled；新建与 resume 均适用。管理控制器保持 disabled。本机所有五个已配置业务目录（含 temp）均验证为 networkAccess=true、执行权限 network.enabled=true、web_search=live，文件权限未扩大。
 

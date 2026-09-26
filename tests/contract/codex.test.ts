@@ -119,6 +119,23 @@ test('C02/B01: real image bytes reach the exec child through --image',async t=>{
   assert.equal(result.outcome,'success');assert.deepEqual(JSON.parse(result.finalText).imageHashes,[images[0]!.sha256]);
   const args=codexArgs(h.c,images,{kind:'codex',threadId:randomUUID()});assert(args.indexOf('--image')>args.indexOf('resume'));
 });
+test('OFFLINE image-only Codex: blank text remains exact on new and resumed turns without required stdin', async t => {
+  const h = setup(t), source = path.join(h.root, 'blank-image.png');
+  writeFileSync(source, await sharp({ create: { width: 4, height: 4, channels: 3, background: 'red' } }).png().toBuffer());
+  const media = new MediaStore(h.c), images = await media.prepare(randomUUID(), [{ path: source, source: 'message' }]);
+  const backend = new CodexBackend(h.c, image => media.read(image));
+  let saved: SessionRef | undefined;
+  for (const text of ['', ' \t\r\n']) {
+    const request = { ...input(images), text };
+    const result = await backend.run(request, saved, hooks().value, new AbortController().signal);
+    assert.equal(result.outcome, 'success');
+    const captured = JSON.parse(readFileSync(path.join(h.c.codex.home, 'capture.json'), 'utf8'));
+    assert.deepEqual(captured.args.slice(-2), ['--', text]); assert.equal(captured.prompt, text);
+    assert.deepEqual(JSON.parse(result.finalText).imageHashes, [images[0]!.sha256]);
+    if (saved) assert.deepEqual(result.sessionRef, saved);
+    saved = result.sessionRef;
+  }
+});
 test('C03: stored-image tampering fails before process creation',async t=>{
   const h=setup(t),source=path.join(h.root,'source.png');writeFileSync(source,await sharp({create:{width:2,height:2,channels:3,background:{r:0,g:0,b:0}}}).png().toBuffer());
   const media=new MediaStore(h.c),images=await media.prepare(randomUUID(),[{path:source,source:'message'}]);writeFileSync(images[0]!.localPath,'tampered');

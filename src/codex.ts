@@ -118,6 +118,8 @@ export class CodexBackend implements AgentBackend {
         executionConfig = { ...this.c, codex: { ...this.c.codex, contextWindowTokens: window.nativeTotalTokens } };
       }
       const args = codexArgs(executionConfig, input.images, saved,this.routing,this.untrustedProject);
+      // Native exec rejects blank required stdin even with images; a blank positional value preserves the original text.
+      if (input.images.length && !input.text.trim()) args.splice(-1, 1, '--', input.text);
       for (const image of input.images) {
         // A persisted path alone is never sufficient: validate bytes again immediately before exec.
         const bytes = this.imageReader ? await this.imageReader(image) : await readControlled(path.join(this.c.stateRoot, 'media'), image.localPath, this.c.media.maxImageBytes);

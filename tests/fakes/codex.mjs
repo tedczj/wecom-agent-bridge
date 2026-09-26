@@ -21,7 +21,8 @@ if (args.includes('app-server')) {
   }
   process.exit(0);
 }
-if (args[0] !== 'exec' || !args.includes('--json') || !args.includes('approval_policy="never"') || args.at(-1) !== '-') process.exit(92);
+if (args[0] !== 'exec' || !args.includes('--json') || !args.includes('approval_policy="never"') ||
+  args.at(-1) !== '-' && !(args.includes('--image') && args.at(-2) === '--' && args.at(-1)?.trim() === '')) process.exit(92);
 const home = process.env.CODEX_HOME;
 fs.mkdirSync(home, {recursive:true});
 const resume = args.indexOf('resume');
@@ -30,6 +31,7 @@ if (mode === 'wrong-thread') id = randomUUID();
 let chunks = [];
 for await (const b of process.stdin) chunks.push(b);
 const prompt = Buffer.concat(chunks).toString('utf8');
+if (args.at(-1) === '-' && !prompt.trim()) process.exit(1); // Native exec rejects blank required stdin, even with images.
 const images = args.flatMap((arg,i) => arg === '--image' ? [args[i+1]] : []);
 const imageHashes = images.map(file => createHash('sha256').update(fs.readFileSync(file)).digest('hex'));
 const sessionFile = path.join(home, id + '.json');

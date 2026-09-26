@@ -39,7 +39,7 @@ export class BusinessSessions {
     return this.store.db.prepare('SELECT session_key,version,profile_digest,selection_request_id FROM business_bindings WHERE conversation_scope=? AND directory_identity=? AND backend_home_key=? AND profile_digest=?')
       .get(scope, directoryIdentity(target), backendHomeKey(target), target.digest) as Binding | undefined;
   }
-  async resolve(binding: EffectBinding, target: Target, intent: 'automatic' | 'new' = 'automatic', explicitCandidate?: CandidateMetadata): Promise<SessionOptions> {
+  async resolve(binding: EffectBinding, target: Target, intent: 'automatic' | 'new' = 'automatic', explicitCandidate?: CandidateMetadata, fallbackWorkspace = false): Promise<SessionOptions> {
     this.fence(binding, target);
     this.assertNoResumeFailure(binding.requestId);
     invariant(!this.store.value('discovery-unverified:' + binding.requestId), 'HISTORY_DISCOVERY_UNVERIFIED');
@@ -65,6 +65,9 @@ export class BusinessSessions {
         if (age !== null && age > 24 * 60 * 60 * 1000) options.push({ token: randomUUID(), kind: 'new', reason: 'binding-expired', isDefault: true });
         if (ref) options.push({ token: randomUUID(), kind: 'resume', reason: 'explicit-resume', isDefault: false, sessionKey: session.session_key, ref, lastResponseAt: session.last_response_at });
       }
+    } else if (fallbackWorkspace) {
+      // A fallback conversation owns its binding; unrelated native history is not an implicit resume request.
+      options.push({ token: randomUUID(), kind: 'new', reason: 'fallback-new', isDefault: true });
     } else {
       const changed = this.store.db.prepare('SELECT 1 FROM business_bindings WHERE conversation_scope=? AND directory_identity=? LIMIT 1').get(binding.scope, directoryIdentity(target));
       if (changed) options.push({ token: randomUUID(), kind: 'new', reason: 'profile-changed', isDefault: true });

@@ -360,7 +360,8 @@ export class HierarchicalBridge {
           try { candidate = await history.get(scope, target, args.sessionRef as string); }
           catch (error) { this.dependencies.sessions.refuseResume(request.request_id, target, args.sessionRef as string, error); }
         }
-        const options = await this.dependencies.sessions.resolve(binding, target, args.intent as 'new' | 'automatic' | undefined, candidate);
+        const options = await this.dependencies.sessions.resolve(binding, target, args.intent as 'new' | 'automatic' | undefined, candidate,
+          intent === 'work' && directory.id === this.c.routing!.fallbackWorkspace);
         selectionRequired = !options.options.some(option => option.isDefault); return { ...options, delegationIntent: intent };
       },
       select_business_session: async args => {

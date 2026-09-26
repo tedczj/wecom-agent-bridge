@@ -10,6 +10,8 @@ Project names and aliases take priority over recursive discovery. Discovery is c
 
 Optional `routing.fallbackWorkspace` names a configured, authorized workspace for requests without a resolved project or applicable active business conversation. Bridge receives its reference from `list_directories` and delegates general questions and image-only inputs as work; Route executes them in the selected business session. Later text retains image context through native session continuation, without copying historical attachments. Explicit targets, forced selections and business continuations take priority. Fallback does not bypass genuine directory ambiguity, authorization or specific-project history lookup. Unconfigured fallback retains directory clarification.
 
+For work in the configured fallback workspace, no binding means a new conversation-owned business session (`fallback-new`), without native-history discovery. Existing bindings use the usual continuation, expiry and taint checks. An explicit historical session reference takes priority and is verified normally. This policy does not convert a failed discovery or resume within the same request into fresh execution, and does not change non-fallback project discovery.
+
 Progress queries such as “看下 term4u 项目里在干啥” reach that directory's Route verbatim. Route reads native business session messages progressively and reports coverage limits; it need not scan all native history before answering. Session follow-ups refer to that native session unless the user explicitly asks about Weixin management chat. Session roles are persisted in the Bridge catalog; interaction summaries and handoff records preserve the reply's producer role. A Route recap cannot serve as a native Agent reply. Query focus and active execution workspace remain distinct. No business job or successful-response clock update is caused by reading history.
 
 ## Models and sessions
@@ -54,7 +56,7 @@ Replies use the durable outbox and the latest private context token for the pair
 
 ## Codex contract
 
-Use a reviewed installed official Codex executable, not a shell string. Flags are owned by the adapter: `exec --json`, explicit working directory and sandbox, `approval_policy="never"`, disabled web search, restricted tool-network setting, optional model. No `--last`, `--yolo`, full-access sandbox or arbitrary argument passthrough. Prompt is sent through stdin, never interpolated into a shell command.
+Use a reviewed installed official Codex executable, not a shell string. Flags are owned by the adapter: `exec --json`, explicit working directory and sandbox, `approval_policy="never"`, web search and tool networking following `codex.networkAccess`, optional model. No `--last`, `--yolo`, full-access sandbox or arbitrary argument passthrough. Nonblank prompt text is sent through stdin, never interpolated into a shell command. Image-only requests pass their exact blank/whitespace text as the positional prompt because native exec rejects blank required stdin; no synthetic instruction is added.
 
 A new turn records `thread.started.thread_id` immediately. Resume passes that exact UUID and rejects a returned mismatch; it never quietly starts another conversation. Await persistence before processing further events. Since exec may already have begun running when the thread event arrives, a persistence failure is conservatively interrupted, not proof that nothing ran.
 
